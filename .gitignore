@@ -1,0 +1,12 @@
+# Generated outputs belong outside the repository.
+__pycache__/
+.venv/
+node_modules/
+*.pyc
+*.o
+*.exe
+*.wasm
+*.ldr
+*.tfw
+.DS_Store
+*.wav

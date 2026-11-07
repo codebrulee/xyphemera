@@ -1,0 +1,92 @@
+# Earthshine
+
+A shimmer reverb for the OP-XY's sends: a warm, wide tank whose tail is
+pitch-shifted back into itself. The **sub** layer sits an interval under the
+notes (an octave by default); the **up** layer climbs above them. Light turns
+from the moon (all sub) to the sun (all up); Shimmer sets how much of either.
+An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
+
+## Controls
+
+| | 1 | 2 | 3 | 4 |
+| --- | --- | --- | --- | --- |
+| Page 1 | Decay (1 to 20 s) | Tone (dark to bright) | Light (moon to sun) | Shimmer |
+| Page 2 (press) | Dry | Mod | Fine (stretch, ±25 cents) | Width (mono to wide) |
+| Shift | Delay (0, 100, 250, 500 ms) | Swell (off, 0.5, 1, 2 s) | Sub (−12, −24, −7) | Up (+12, +7, +19) |
+
+- **Dry** keeps the source in the stock mixer at full send; it does not add
+  clean audio to the return.
+- **Mod** drifts the tank's delay lines, by up to 10 ms and up to 2.5 times as fast at full: gentle through its first half, seasick at the top. It defaults to off.
+- **Delay** holds the shimmer back before it reaches the tank; the reverb itself starts at once.
+- **Swell** fades the shimmer in after each note, as a slow follower of the input catches a fast one.
+- **Width** opens the wet from mono (0) to the tank's full spread (70, its default); above 70 a slow autopan sways it, subtle at first and pronounced at 100.
+- **Fine** stretches the intervals: up sharper and sub flatter as it rises.
+
+## How it works
+
+- A 4-line feedback delay network after four all-passes per side, running
+  at half rate (22,050 Hz): dark by design, and light enough for the OP-XY
+  (its cost is the tank's arithmetic, so the tank is kept small). Its lines
+  are long, so it has as many resonances as an 8-line tank and low notes'
+  tails ring on pitch; output taps along each line keep it a wash, not echoes.
+- Correlation-aligned pitch shifters: each splice lands, to a fraction of a
+  sample, where the outgoing and incoming waveforms match, so the layers hold
+  pitch (within a cent at the exact intervals; free-running grains drift by
+  over a semitone). The search for each splice runs a little each sample over
+  the blocks before the splice is due, one search at a time, so no single
+  block carries it.
+- The sub layer shifts the input once, in mono, so it stays one interval down
+  instead of falling further each pass; the up layer shifts the wet's middle
+  and recirculates, so it climbs, and the tank spreads it back to stereo.
+  Mod drifts all four of the tank's lines. Fine's
+  stretched octaves stack partials that share no period, so with Fine away
+  from centre the recirculating layer wanders a few cents.
+- The arithmetic is 32-bit fixed point. The state lives in the send's buffer
+  (`tools/make_tables.py` lays it out and sets `bufferBytes`), cleared a slice
+  per block at start, during which the effect is silent (about 25 ms).
+
+## Develop
+
+Keep the [SDK](https://github.com/etcetc000/open-xy) beside this repository as
+`../open-xy`, on `staging`; adjust the commands if yours is elsewhere. The
+[first-machine guide](https://github.com/etcetc000/open-xy/blob/staging/docs/first-machine.md)
+covers prerequisites. Read the
+[core machines](https://github.com/etcetc000/open-xy-core-machines) as worked
+examples and the [machine API](https://github.com/etcetc000/open-xy/blob/staging/docs/api.md)
+for the supported interfaces. Follow the
+[UX conventions](https://github.com/etcetc000/open-xy/blob/staging/docs/ux.md);
+Macro Osc is the two-page reference. Synth starters with five to eight controls
+use the [shared header](https://github.com/etcetc000/open-xy/blob/staging/docs/display.md#two-page-header):
+keep its SVG block and update the labels/value captions with your controls.
+Columns without alternates repeat the same saved parameter on both rows.
+Agent instructions are in [AGENTS.md](AGENTS.md).
+
+Effects have no browser preview. Run the host tests below, then audition on your XY
+using the hardware workflow linked below.
+
+```sh
+python ../open-xy/sdk.py test --machine earthshine --cxx clang++ --host-cxx g++
+```
+
+Extend `tests/` as the machine's behavior grows. The starter is a minimal
+implementation, not a finished instrument. Keep generated output outside this
+repository. The generated workflow checks source, sound tests and synth previews
+on Linux, and compiles the native module on Windows; it never uses a device.
+Its `OPEN_XY_REF` starts at `staging`; pin a compatible SDK commit for a release.
+
+## Hardware and publication
+
+Follow the SDK's [firmware build guide](https://github.com/etcetc000/open-xy/blob/staging/docs/build.md)
+and [hardware profiling workflow](https://github.com/etcetc000/open-xy/blob/staging/docs/profiling.md).
+Keep firmware and stock content outside every checkout. Commit the machine,
+build with profiling enabled, install when authorized and collect a run
+(see its "Collect a run" section).
+The host estimate printed by `test` cannot substitute for those measurements.
+
+For the builder, follow [catalog submission](https://github.com/etcetc000/open-xy/blob/staging/docs/catalog.md#submit-a-machine).
+Every new or changed draft/published entry needs a hardware CPU record tied to
+its pinned commit. Hardware validation may be performed by a maintainer if you
+do not own an XY. Publication remains pending until that evidence is available.
+
+The generated starter is covered by [LICENSE](LICENSE). Preserve notices for
+code you reuse and include the licences of any dependencies or ports.

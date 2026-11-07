@@ -1,0 +1,122 @@
+<g id="earthshine_panel">
+<!-- SDK two-page header: keep this block before machine artwork below y=38. -->
+<path d="M0,0 L480,0 L480,38 L0,38 Z" fill="#000000"/>
+<path id="earthshine_node_4" transform="matrix(1 0 0 1 0 0)" d="M0,0 L60,0 L60,20 L0,20 Z" fill="#000000" stroke="#000000" stroke-width="0.5"/>
+<path id="earthshine_node_5" transform="matrix(1 0 0 1 60 0)" d="M0,0 L60,0 L60,20 L0,20 Z" fill="#323232" stroke="#323232" stroke-width="0.5"/>
+<path id="earthshine_node_6" transform="matrix(1 0 0 1 120 0)" d="M0,0 L60,0 L60,20 L0,20 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.5"/>
+<path id="earthshine_node_7" transform="matrix(1 0 0 1 180 0)" d="M0,0 L60,0 L60,20 L0,20 Z" fill="#646464" stroke="#646464" stroke-width="0.5"/>
+<path id="earthshine_node_8" transform="matrix(1 0 0 1 240 0)" d="M0,0 L60,0 L60,20 L0,20 Z" fill="#7D7D7D" stroke="#7D7D7D" stroke-width="0.5"/>
+<path id="earthshine_node_9" transform="matrix(1 0 0 1 300 0)" d="M0,0 L60,0 L60,20 L0,20 Z" fill="#969696" stroke="#969696" stroke-width="0.5"/>
+<path id="earthshine_node_10" transform="matrix(1 0 0 1 360 0)" d="M0,0 L60,0 L60,20 L0,20 Z" fill="#AFAFAF" stroke="#AFAFAF" stroke-width="0.5"/>
+<path id="earthshine_node_11" transform="matrix(1 0 0 1 420 0)" d="M0,0 L60,0 L60,20 L0,20 Z" fill="#CDCDCD" stroke="#CDCDCD" stroke-width="0.5"/>
+<text id="earthshine_text_0" transform="matrix(1 0 0 1 5 10)" fill="#CBCBCB" font-family="UniversNextPro-Light" font-size="10px">-</text>
+<text id="earthshine_text_1" transform="matrix(1 0 0 1 125 10)" fill="#CBCBCB" font-family="UniversNextPro-Light" font-size="10px">-</text>
+<text id="earthshine_text_2" transform="matrix(1 0 0 1 245 10)" fill="#000000" font-family="UniversNextPro-Light" font-size="10px">-</text>
+<text id="earthshine_text_3" transform="matrix(1 0 0 1 365 10)" fill="#000000" font-family="UniversNextPro-Light" font-size="10px">-</text>
+<text id="earthshine_text_4" transform="matrix(1 0 0 1 65 17.4)" fill="#CBCBCB" font-family="UniversNextPro-Light" font-size="20px">-</text>
+<text id="earthshine_text_5" transform="matrix(1 0 0 1 185 17.4)" fill="#CBCBCB" font-family="UniversNextPro-Light" font-size="20px">-</text>
+<text id="earthshine_text_6" transform="matrix(1 0 0 1 305 17.4)" fill="#000000" font-family="UniversNextPro-Light" font-size="20px">-</text>
+<text id="earthshine_text_7" transform="matrix(1 0 0 1 425 17.4)" fill="#000000" font-family="UniversNextPro-Light" font-size="20px">-</text>
+<text id="earthshine_text_8" transform="matrix(1 0 0 1 5 33)" fill="#5A5A5A" font-family="UniversNextPro-Light" font-size="10px">-</text>
+<text id="earthshine_text_9" transform="matrix(1 0 0 1 125 33)" fill="#5A5A5A" font-family="UniversNextPro-Light" font-size="10px">-</text>
+<text id="earthshine_text_10" transform="matrix(1 0 0 1 245 33)" fill="#5A5A5A" font-family="UniversNextPro-Light" font-size="10px">-</text>
+<text id="earthshine_text_11" transform="matrix(1 0 0 1 365 33)" fill="#5A5A5A" font-family="UniversNextPro-Light" font-size="10px">-</text>
+<text id="earthshine_text_12" transform="matrix(1 0 0 1 65 33)" fill="#707070" font-family="UniversNextPro-Light" font-size="13px">-</text>
+<text id="earthshine_text_13" transform="matrix(1 0 0 1 185 33)" fill="#707070" font-family="UniversNextPro-Light" font-size="13px">-</text>
+<text id="earthshine_text_14" transform="matrix(1 0 0 1 305 33)" fill="#707070" font-family="UniversNextPro-Light" font-size="13px">-</text>
+<text id="earthshine_text_15" transform="matrix(1 0 0 1 425 33)" fill="#707070" font-family="UniversNextPro-Light" font-size="13px">-</text>
+<circle cx="117.7494" cy="199.2939" r="0.9" fill="#323232" stroke="#323232" stroke-width="0.1"/>
+<circle cx="406.5067" cy="105.3675" r="0.9" fill="#969696" stroke="#969696" stroke-width="0.1"/>
+<circle cx="466.4825" cy="209.3769" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="289.1568" cy="176.1609" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="404.8031" cy="105.6189" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="396.4063" cy="104.8792" r="0.6" fill="#969696" stroke="#969696" stroke-width="0.1"/>
+<circle cx="63.127" cy="121.3122" r="0.9" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="296.9071" cy="175.3809" r="0.6" fill="#969696" stroke="#969696" stroke-width="0.1"/>
+<circle cx="439.5308" cy="89.1737" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="245.8338" cy="164.9869" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="298.7696" cy="108.4834" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="124.7329" cy="200.5134" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="209.0929" cy="74.3559" r="0.6" fill="#969696" stroke="#969696" stroke-width="0.1"/>
+<circle cx="361.6988" cy="68.5964" r="0.6" fill="#323232" stroke="#323232" stroke-width="0.1"/>
+<circle cx="179.7881" cy="113.131" r="0.6" fill="#323232" stroke="#323232" stroke-width="0.1"/>
+<circle cx="231.4898" cy="177.5703" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="102.9357" cy="91.1395" r="0.6" fill="#323232" stroke="#323232" stroke-width="0.1"/>
+<circle cx="30.3992" cy="93.9538" r="0.6" fill="#323232" stroke="#323232" stroke-width="0.1"/>
+<circle cx="244.3454" cy="172.5854" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="102.1852" cy="192.039" r="0.6" fill="#323232" stroke="#323232" stroke-width="0.1"/>
+<circle cx="212.0946" cy="89.6597" r="0.9" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="186.626" cy="123.2026" r="0.6" fill="#323232" stroke="#323232" stroke-width="0.1"/>
+<circle cx="114.3895" cy="160.5471" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="391.0547" cy="139.677" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="432.41" cy="77.3782" r="0.6" fill="#323232" stroke="#323232" stroke-width="0.1"/>
+<circle cx="466.9338" cy="205.8736" r="0.6" fill="#969696" stroke="#969696" stroke-width="0.1"/>
+<circle cx="117.5442" cy="210.6998" r="0.6" fill="#323232" stroke="#323232" stroke-width="0.1"/>
+<circle cx="309.196" cy="139.599" r="0.9" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="10.5717" cy="66.9422" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="94.4672" cy="138.1323" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="33.2972" cy="159.082" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="355.8309" cy="171.2453" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="45.695" cy="143.7522" r="0.6" fill="#969696" stroke="#969696" stroke-width="0.1"/>
+<circle cx="180.6755" cy="152.7036" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="325.2089" cy="95.4968" r="0.6" fill="#969696" stroke="#969696" stroke-width="0.1"/>
+<circle cx="269.0605" cy="146.0549" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="101.8683" cy="206.2474" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="248.5615" cy="54.015" r="0.6" fill="#323232" stroke="#323232" stroke-width="0.1"/>
+<circle cx="436.6893" cy="45.2925" r="0.6" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="444.1941" cy="85.9178" r="0.6" fill="#969696" stroke="#969696" stroke-width="0.1"/>
+<circle cx="70.2898" cy="100.3365" r="0.6" fill="#969696" stroke="#969696" stroke-width="0.1"/>
+<circle cx="90.2827" cy="159.8893" r="0.9" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<circle cx="413.5431" cy="121.104" r="0.6" fill="#969696" stroke="#969696" stroke-width="0.1"/>
+<circle cx="354.2484" cy="93.187" r="0.6" fill="#323232" stroke="#323232" stroke-width="0.1"/>
+<path d="M170.9345,167.875 L166.1924,158.2076 L162.7958,147.9895 L160.8068,137.407 L160.2614,126.6531 L161.1697,115.9236 L163.515,105.4144 L167.2547,95.3168 L172.3206,85.8151 L178.6203,77.0825 L186.039,69.278 L194.4414,62.5441 L203.6743,57.0035 L213.5694,52.7571 L223.9464,49.8825 L234.6161,48.4319 L245.3839,48.4319 L256.0536,49.8825 L266.4306,52.7571 L276.3257,57.0035 L285.5586,62.5441 L293.961,69.278 L301.3797,77.0825 L307.6794,85.8151 L312.7453,95.3168 L316.485,105.4144 L318.8303,115.9236 L319.7386,126.6531 L319.1932,137.407 L317.2042,147.9895 L313.8076,158.2076 L309.0655,167.875 L309.4985,168.125 L314.2703,158.397 L317.6882,148.1149 L319.6898,137.466 L320.2386,126.6446 L319.3246,115.8479 L316.9645,105.2728 L313.2013,95.1119 L308.1037,85.5506 L301.7645,76.7632 L294.2993,68.9099 L285.8443,62.1337 L276.5535,56.5584 L266.5963,52.2854 L256.1542,49.3927 L245.4177,47.9331 L234.5823,47.9331 L223.8458,49.3927 L213.4037,52.2854 L203.4465,56.5584 L194.1557,62.1337 L185.7007,68.9099 L178.2355,76.7632 L171.8963,85.5506 L166.7987,95.1119 L163.0355,105.2728 L160.6754,115.8479 L159.7614,126.6446 L160.3102,137.466 L162.3118,148.1149 L165.7297,158.397 L170.5015,168.125 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M170.5305,167.6752 L165.3343,170.6752 L165.7093,171.3248 L170.9055,168.3248 Z" fill="#969696" stroke="#969696" stroke-width="0.1"/>
+<path d="M164.7391,155.1267 L161.92,156.1527 L162.091,156.6226 L164.9101,155.5965 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M161.172,141.6457 L158.2175,142.1666 L158.3044,142.659 L161.2588,142.1381 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M160,127.75 L157,127.75 L157,128.25 L160,128.25 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M161.2588,113.8619 L158.3044,113.341 L158.2175,113.8334 L161.172,114.3543 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M164.9101,100.4035 L162.091,99.3774 L161.92,99.8473 L164.7391,100.8733 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M170.843,87.7835 L168.2449,86.2835 L167.9949,86.7165 L170.593,88.2165 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M178.8771,76.3855 L176.579,74.4571 L176.2576,74.8401 L178.5557,76.7685 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M188.7685,66.5557 L186.8401,64.2576 L186.4571,64.579 L188.3855,66.8771 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M200.2165,58.593 L198.7165,55.9949 L198.2835,56.2449 L199.7835,58.843 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M212.8733,52.7391 L211.8473,49.92 L211.3774,50.091 L212.4035,52.9101 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M226.3543,49.172 L225.8334,46.2175 L225.341,46.3044 L225.8619,49.2588 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M240.375,48 L240.375,42 L239.625,42 L239.625,48 Z" fill="#969696" stroke="#969696" stroke-width="0.1"/>
+<path d="M254.1381,49.2588 L254.659,46.3044 L254.1666,46.2175 L253.6457,49.172 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M267.5965,52.9101 L268.6226,50.091 L268.1527,49.92 L267.1267,52.7391 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M280.2165,58.843 L281.7165,56.2449 L281.2835,55.9949 L279.7835,58.593 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M291.6145,66.8771 L293.5429,64.579 L293.1599,64.2576 L291.2315,66.5557 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M301.4443,76.7685 L303.7424,74.8401 L303.421,74.4571 L301.1229,76.3855 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M309.407,88.2165 L312.0051,86.7165 L311.7551,86.2835 L309.157,87.7835 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M315.2609,100.8733 L318.08,99.8473 L317.909,99.3774 L315.0899,100.4035 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M318.828,114.3543 L321.7825,113.8334 L321.6956,113.341 L318.7412,113.8619 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M320,128.25 L323,128.25 L323,127.75 L320,127.75 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M318.7412,142.1381 L321.6956,142.659 L321.7825,142.1666 L318.828,141.6457 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M315.0899,155.5965 L317.909,156.6226 L318.08,156.1527 L315.2609,155.1267 Z" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>
+<path d="M309.0945,168.3248 L314.2907,171.3248 L314.6657,170.6752 L309.4695,167.6752 Z" fill="#969696" stroke="#969696" stroke-width="0.1"/>
+<path d="M181.4253,177.5603 L180.5373,177.6518 L179.6796,177.8998 L178.8797,178.2963 L178.1631,178.8288 L177.5527,179.4803 L177.0678,180.2299 L176.7239,181.0538 L176.5321,181.9257 L176.4984,182.8179 L176.6238,183.7018 L176.9045,184.5493 L177.3315,185.3334 L177.891,186.029 L178.5654,186.6141 L179.333,187.0699 L180.1695,187.3819 L181.0482,187.5402 L181.9409,187.5396 L182.8194,187.3804 L183.6555,187.0674 L184.4227,186.6107 L185.0964,186.0249 L185.6551,185.3286 L186.0812,184.544 L185.3594,184.8951 L184.584,185.1024 L183.7833,185.1585 L182.9866,185.0612 L182.2229,184.8141 L181.5202,184.4263 L180.9041,183.9118 L180.3971,183.2896 L180.0177,182.5823 L179.7798,181.8157 L179.6921,181.0179 L179.7578,180.2179 L179.9744,179.4451 L180.3341,178.7276 L180.8237,178.0916 Z" fill="#CDCDCD" stroke="#CDCDCD" stroke-width="0.1"/>
+<circle cx="298.5083" cy="182.5599" r="3.2" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="0.1"/>
+<path d="M303.5083,182.9349 L306.0083,182.9349 L306.0083,182.1849 L303.5083,182.1849 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="0.1"/>
+<path d="M301.7787,186.3606 L303.5464,188.1283 L304.0768,187.598 L302.309,185.8302 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="0.1"/>
+<path d="M298.1333,187.5599 L298.1333,190.0599 L298.8833,190.0599 L298.8833,187.5599 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="0.1"/>
+<path d="M294.7076,185.8302 L292.9398,187.598 L293.4702,188.1283 L295.2379,186.3606 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="0.1"/>
+<path d="M293.5083,182.1849 L291.0083,182.1849 L291.0083,182.9349 L293.5083,182.9349 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="0.1"/>
+<path d="M295.2379,178.7592 L293.4702,176.9914 L292.9398,177.5217 L294.7076,179.2895 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="0.1"/>
+<path d="M298.8833,177.5599 L298.8833,175.0599 L298.1333,175.0599 L298.1333,177.5599 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="0.1"/>
+<path d="M302.309,179.2895 L304.0768,177.5217 L303.5464,176.9914 L301.7787,178.7592 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="0.1"/>
+<circle id="earthshine_node_12" transform="matrix(1 0 0 1 240 128)" cx="0" cy="0" r="32" fill="#000000" stroke="#323232" stroke-width="0.5"/>
+<path d="M32,0 L31.8459,3.1365 L31.3851,6.2429 L30.6221,9.2891 L29.5641,12.2459 L28.2215,15.0847 L26.607,17.7782 L24.7363,20.3006 L22.6274,22.6274 L20.3006,24.7363 L17.7782,26.607 L15.0847,28.2215 L12.2459,29.5641 L9.2891,30.6221 L6.2429,31.3851 L3.1365,31.8459 L0,32 L-3.1365,31.8459 L-6.2429,31.3851 L-9.2891,30.6221 L-12.2459,29.5641 L-15.0847,28.2215 L-17.7782,26.607 L-20.3006,24.7363 L-22.6274,22.6274 L-24.7363,20.3006 L-26.607,17.7782 L-28.2215,15.0847 L-29.5641,12.2459 L-30.6221,9.2891 L-31.3851,6.2429 L-31.8459,3.1365 L-32,0 L-31.8459,-3.1365 L-31.3851,-6.2429 L-30.6221,-9.2891 L-29.5641,-12.2459 L-28.2215,-15.0847 L-26.607,-17.7782 L-24.7363,-20.3006 L-22.6274,-22.6274 L-20.3006,-24.7363 L-17.7782,-26.607 L-15.0847,-28.2215 L-12.2459,-29.5641 L-9.2891,-30.6221 L-6.2429,-31.3851 L-3.1365,-31.8459 L0,-32 L3.1365,-31.8459 L6.2429,-31.3851 L9.2891,-30.6221 L12.2459,-29.5641 L15.0847,-28.2215 L17.7782,-26.607 L20.3006,-24.7363 L22.6274,-22.6274 L24.7363,-20.3006 L26.607,-17.7782 L28.2215,-15.0847 L29.5641,-12.2459 L30.6221,-9.2891 L31.3851,-6.2429 L31.8459,-3.1365 Z" id="earthshine_node_0" transform="matrix(1 0 0 1 240 128)" fill="#646464" stroke="#646464" stroke-width="0.5"/>
+<path d="M30,0 L29.8555,2.9405 L29.4236,5.8527 L28.7082,8.7085 L27.7164,11.4805 L26.4576,14.1419 L24.9441,16.6671 L23.1903,19.0318 L21.2132,21.2132 L19.0318,23.1903 L16.6671,24.9441 L14.1419,26.4576 L11.4805,27.7164 L8.7085,28.7082 L5.8527,29.4236 L2.9405,29.8555 L0,30 L-2.9405,29.8555 L-5.8527,29.4236 L-8.7085,28.7082 L-11.4805,27.7164 L-14.1419,26.4576 L-16.6671,24.9441 L-19.0318,23.1903 L-21.2132,21.2132 L-23.1903,19.0318 L-24.9441,16.6671 L-26.4576,14.1419 L-27.7164,11.4805 L-28.7082,8.7085 L-29.4236,5.8527 L-29.8555,2.9405 L-30,0 L-29.8555,-2.9405 L-29.4236,-5.8527 L-28.7082,-8.7085 L-27.7164,-11.4805 L-26.4576,-14.1419 L-24.9441,-16.6671 L-23.1903,-19.0318 L-21.2132,-21.2132 L-19.0318,-23.1903 L-16.6671,-24.9441 L-14.1419,-26.4576 L-11.4805,-27.7164 L-8.7085,-28.7082 L-5.8527,-29.4236 L-2.9405,-29.8555 L0,-30 L2.9405,-29.8555 L5.8527,-29.4236 L8.7085,-28.7082 L11.4805,-27.7164 L14.1419,-26.4576 L16.6671,-24.9441 L19.0318,-23.1903 L21.2132,-21.2132 L23.1903,-19.0318 L24.9441,-16.6671 L26.4576,-14.1419 L27.7164,-11.4805 L28.7082,-8.7085 L29.4236,-5.8527 L29.8555,-2.9405 Z" id="earthshine_node_1" transform="matrix(1 0 0 1 240 128)" fill="none" stroke="#3C3C3C" stroke-width="0.5"/>
+<path d="M30,0 L29.8555,2.9405 L29.4236,5.8527 L28.7082,8.7085 L27.7164,11.4805 L26.4576,14.1419 L24.9441,16.6671 L23.1903,19.0318 L21.2132,21.2132 L19.0318,23.1903 L16.6671,24.9441 L14.1419,26.4576 L11.4805,27.7164 L8.7085,28.7082 L5.8527,29.4236 L2.9405,29.8555 L0,30 L-2.9405,29.8555 L-5.8527,29.4236 L-8.7085,28.7082 L-11.4805,27.7164 L-14.1419,26.4576 L-16.6671,24.9441 L-19.0318,23.1903 L-21.2132,21.2132 L-23.1903,19.0318 L-24.9441,16.6671 L-26.4576,14.1419 L-27.7164,11.4805 L-28.7082,8.7085 L-29.4236,5.8527 L-29.8555,2.9405 L-30,0 L-29.8555,-2.9405 L-29.4236,-5.8527 L-28.7082,-8.7085 L-27.7164,-11.4805 L-26.4576,-14.1419 L-24.9441,-16.6671 L-23.1903,-19.0318 L-21.2132,-21.2132 L-19.0318,-23.1903 L-16.6671,-24.9441 L-14.1419,-26.4576 L-11.4805,-27.7164 L-8.7085,-28.7082 L-5.8527,-29.4236 L-2.9405,-29.8555 L0,-30 L2.9405,-29.8555 L5.8527,-29.4236 L8.7085,-28.7082 L11.4805,-27.7164 L14.1419,-26.4576 L16.6671,-24.9441 L19.0318,-23.1903 L21.2132,-21.2132 L23.1903,-19.0318 L24.9441,-16.6671 L26.4576,-14.1419 L27.7164,-11.4805 L28.7082,-8.7085 L29.4236,-5.8527 L29.8555,-2.9405 Z" id="earthshine_node_2" transform="matrix(1 0 0 1 240 128)" fill="none" stroke="#3C3C3C" stroke-width="0.5"/>
+<path d="M30,0 L29.8555,2.9405 L29.4236,5.8527 L28.7082,8.7085 L27.7164,11.4805 L26.4576,14.1419 L24.9441,16.6671 L23.1903,19.0318 L21.2132,21.2132 L19.0318,23.1903 L16.6671,24.9441 L14.1419,26.4576 L11.4805,27.7164 L8.7085,28.7082 L5.8527,29.4236 L2.9405,29.8555 L0,30 L-2.9405,29.8555 L-5.8527,29.4236 L-8.7085,28.7082 L-11.4805,27.7164 L-14.1419,26.4576 L-16.6671,24.9441 L-19.0318,23.1903 L-21.2132,21.2132 L-23.1903,19.0318 L-24.9441,16.6671 L-26.4576,14.1419 L-27.7164,11.4805 L-28.7082,8.7085 L-29.4236,5.8527 L-29.8555,2.9405 L-30,0 L-29.8555,-2.9405 L-29.4236,-5.8527 L-28.7082,-8.7085 L-27.7164,-11.4805 L-26.4576,-14.1419 L-24.9441,-16.6671 L-23.1903,-19.0318 L-21.2132,-21.2132 L-19.0318,-23.1903 L-16.6671,-24.9441 L-14.1419,-26.4576 L-11.4805,-27.7164 L-8.7085,-28.7082 L-5.8527,-29.4236 L-2.9405,-29.8555 L0,-30 L2.9405,-29.8555 L5.8527,-29.4236 L8.7085,-28.7082 L11.4805,-27.7164 L14.1419,-26.4576 L16.6671,-24.9441 L19.0318,-23.1903 L21.2132,-21.2132 L23.1903,-19.0318 L24.9441,-16.6671 L26.4576,-14.1419 L27.7164,-11.4805 L28.7082,-8.7085 L29.4236,-5.8527 L29.8555,-2.9405 Z" id="earthshine_node_3" transform="matrix(1 0 0 1 240 128)" fill="none" stroke="#3C3C3C" stroke-width="0.5"/>
+<path d="M-0.3,-34 L0.3,-34 L0.3,34 L-0.3,34 Z" id="earthshine_node_14" transform="matrix(1 0 0 1 240 128)" fill="#969696" stroke="#969696" stroke-width="0.25"/>
+<path d="M73,-0.75 L89,-0.75 L89,0.75 L73,0.75 Z" id="earthshine_node_13" transform="matrix(1 0 0 1 240 128)" fill="#CDCDCD" stroke="#CDCDCD" stroke-width="0.25"/>
+<text id="earthshine_text_16" transform="matrix(1 0 0 1 173.4917 200.5599)" fill="#969696" font-family="UniversNextPro-Light" font-size="10px">-</text>
+<text id="earthshine_text_17" transform="matrix(1 0 0 1 290.5083 200.5599)" fill="#969696" font-family="UniversNextPro-Light" font-size="10px">-</text>
+<circle id="earthshine_palette_0" cx="640" cy="0" r="1" fill="#646464" stroke="#646464" stroke-width="0.5"/>
+<circle id="earthshine_palette_1" cx="640" cy="0" r="1" fill="#000000" stroke="#323232" stroke-width="0.5"/>
+<circle id="earthshine_palette_2" cx="640" cy="0" r="1" fill="#CDCDCD" stroke="#CDCDCD" stroke-width="0.25"/>
+<circle id="earthshine_palette_3" cx="640" cy="0" r="1" fill="#3C3C3C" stroke="#3C3C3C" stroke-width="0.5"/>
+<circle id="earthshine_palette_4" cx="640" cy="0" r="1" fill="#969696" stroke="#969696" stroke-width="0.25"/>
+</g>

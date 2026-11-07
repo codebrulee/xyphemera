@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "sdk": "1.8",
+  "kind": "effect",
+  "description": "CPU probe: prbuf"
+}

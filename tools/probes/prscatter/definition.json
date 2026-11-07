@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "prscatter",
+  "name": "PR scatter",
+  "parameters": [
+    {
+      "id": "amount",
+      "label": "Amount",
+      "default": 0.5,
+      "mapping": {
+        "kind": "linear",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "display": "percent"
+    }
+  ],
+  "presets": {},
+  "resources": {
+    "bufferBytes": 65536
+  }
+}

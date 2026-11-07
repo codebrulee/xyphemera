@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "sdk": "1.8",
+  "kind": "effect",
+  "description": "A shimmer reverb: a warm, wide tank whose tail is pitch-shifted back into itself, a sub octave under the notes (moon) or climbing above them (sun).",
+  "dryParameter": "dry"
+}

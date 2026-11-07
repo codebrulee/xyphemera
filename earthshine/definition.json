@@ -1,0 +1,169 @@
+{
+  "schema": 1,
+  "id": "earthshine",
+  "name": "Earthshine",
+  "press": "page",
+  "parameters": [
+    {
+      "id": "decay",
+      "label": "Decay",
+      "default": 0.55,
+      "mapping": {
+        "kind": "exponential",
+        "minimum": 1000,
+        "maximum": 20000
+      },
+      "display": "duration"
+    },
+    {
+      "id": "tone",
+      "label": "Tone",
+      "default": 0.45,
+      "mapping": {
+        "kind": "linear",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "display": "percent"
+    },
+    {
+      "id": "light",
+      "label": "Light",
+      "default": 0.25,
+      "mapping": {
+        "kind": "linear",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "display": "percent"
+    },
+    {
+      "id": "shimmer",
+      "label": "Shimmer",
+      "default": 0.6,
+      "mapping": {
+        "kind": "linear",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "display": "percent"
+    },
+    {
+      "id": "dry",
+      "label": "Dry",
+      "default": 1,
+      "mapping": {
+        "kind": "linear",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "display": "percent"
+    },
+    {
+      "id": "mod",
+      "label": "Mod",
+      "default": 0,
+      "mapping": {
+        "kind": "linear",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "display": "percent"
+    },
+    {
+      "id": "fine",
+      "label": "Fine",
+      "default": 0.5,
+      "mapping": {
+        "kind": "linear",
+        "minimum": -1,
+        "maximum": 1
+      },
+      "display": "bipolar"
+    },
+    {
+      "id": "width",
+      "label": "Width",
+      "default": 0.7,
+      "mapping": {
+        "kind": "linear",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "display": "percent"
+    }
+  ],
+  "shift": [
+    {
+      "id": "delay",
+      "label": "Delay",
+      "default": 0,
+      "display": "enum",
+      "mapping": {
+        "kind": "enum",
+        "labels": [
+          "0ms",
+          "100ms",
+          "250ms",
+          "500ms"
+        ]
+      }
+    },
+    {
+      "id": "swell",
+      "label": "Swell",
+      "default": 0,
+      "display": "enum",
+      "mapping": {
+        "kind": "enum",
+        "labels": [
+          "off",
+          "500ms",
+          "1s",
+          "2s"
+        ]
+      }
+    },
+    {
+      "id": "sub",
+      "label": "Sub",
+      "default": 0,
+      "display": "enum",
+      "mapping": {
+        "kind": "enum",
+        "labels": [
+          "-12",
+          "-24",
+          "-7"
+        ]
+      }
+    },
+    {
+      "id": "up",
+      "label": "Up",
+      "default": 0,
+      "display": "enum",
+      "mapping": {
+        "kind": "enum",
+        "labels": [
+          "+12",
+          "+7",
+          "+19"
+        ]
+      }
+    }
+  ],
+  "presets": {},
+  "resources": {
+    "bufferBytes": 318496,
+    "display": {
+      "stateBytes": 60,
+      "stateAlignment": 4,
+      "paths": 4,
+      "points": 64,
+      "nodes": 15,
+      "texts": 18,
+      "palette": 5
+    }
+  }
+}
