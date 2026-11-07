@@ -5,7 +5,7 @@ in its own folder, with its own definition, tests, README and catalog entry.
 
 | Machine | Kind | What it is |
 | --- | --- | --- |
-| [Earthshine](earthshine/README.md) | send effect | A shimmer reverb: a warm tank with a sub octave under the notes and a climbing octave above, on a turning-globe screen |
+| [earthshine](earthshine/README.md) | send effect | exploring the musical and emotional impact of the light touching the earth |
 
 ## Develop
 
