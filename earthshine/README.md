@@ -19,6 +19,7 @@ An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
 - **Mod** drifts the tank's delay lines, by up to 10 ms and up to 2.5 times as fast at full: gentle through its first half, seasick at the top. It defaults to off.
 - **Delay** holds the shimmer back before it reaches the tank; the reverb itself starts at once.
 - **Swell** fades the shimmer in after each note, as a slow follower of the input catches a fast one.
+- **Tone** sets the tank's damping (700 Hz to 9 kHz) and the vowel the shimmer sings: "oo" when dark, "oh", "ah" in the middle, "eh" when bright. The vowel is broad and blended in (more as each note starts), and leaves the shimmer below 250 Hz alone so the sub keeps its body.
 - **Width** opens the wet from mono (0) to the tank's full spread (70, its default); above 70 a slow autopan sways it, subtle at first and pronounced at 100.
 - **Fine** stretches the intervals: up sharper and sub flatter as it rises.
 
@@ -41,6 +42,9 @@ An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
   Mod drifts all four of the tank's lines. Fine's
   stretched octaves stack partials that share no period, so with Fine away
   from centre the recirculating layer wanders a few cents.
+- The shimmer is driven into a soft, slightly lopsided curve at a level it
+  follows, for the same warm character at any loudness, and its delay drifts
+  by up to 3 ms, a new target each second, so its timing breathes.
 - The arithmetic is 32-bit fixed point. The state lives in the send's buffer
   (`tools/make_tables.py` lays it out and sets `bufferBytes`), cleared a slice
   per block at start, during which the effect is silent (about 25 ms).

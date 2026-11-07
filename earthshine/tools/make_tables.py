@@ -147,10 +147,24 @@ w(f'const i32 kUpHigh = {onepole(250, R)};       // up path high-pass 250 Hz')
 w(f'const i32 kUpLow = {onepole(6000, R)};       // up path low-pass 6 kHz')
 w(f'const i32 kSubHigh = {onepole(25, R)};       // sub path high-pass 25 Hz')
 w(f'const i32 kSubLow = {onepole(2500, R)};      // sub path low-pass 2.5 kHz')
+# Formants over Tone (33 points): a vowel from "oo" (dark) through "oh" to "ah"
+# (the middle) and "eh" (bright), as the state-variable filters' f = 2 sin(pi fc / R), Q31.
+VOWELS = ((0.0, (325, 700, 2530)), (0.25, (450, 800, 2830)), (0.5, (730, 1090, 2440)), (1.0, (530, 1840, 2480)))
+def vowel_at(x):
+    for (x0, a), (x1, b) in zip(VOWELS, VOWELS[1:]):
+        if x <= x1:
+            u = (x - x0) / (x1 - x0)
+            return [a[i] * (b[i] / a[i]) ** u for i in range(3)]
+    return list(VOWELS[-1][1])
+formants = [[q31(2 * math.sin(math.pi * hz / R)) for hz in vowel_at(i / 32)] for i in range(33)]
+w('// Formants over Tone: "oo" .. "oh" .. "ah" (middle) .. "eh", f = 2 sin(pi fc / R) for F1..F3, Q31.')
+w('const i32 kFormant[33][3] = {' + ', '.join('{' + ', '.join(map(str, r)) + '}' for r in formants) + '};')
 w('// Delay: the shimmer\'s own delay, half-rate samples. Swell: the slow follower\'s rise, Q31 a tick (0: off).')
 w('const u32 kShimmerDelay[4] = {' + ', '.join(str(int(ms * 0.001 * R)) for ms in (0, 100, 250, 500)) + '};')
 w('const i32 kSwellRise[4] = {0, ' + ', '.join(str(onepole(1 / (2 * math.pi * s / 1.75), R)) for s in (0.5, 1.0, 2.0)) + '};  // the shimmer at 90% in about 0.5, 1, 2 s (measured)')
 w(f'const i32 kFollowFast = {onepole(1 / (2 * math.pi * 0.025), R)};   // the level, smoothed over 25 ms')
+w(f'const i32 kVowelLow = {onepole(250, R)};   // the vowel passes the shimmer below 250 Hz')
+w(f'const i32 kVowelRise = {onepole(1 / (2 * math.pi * 0.3 / 3), R)};   // the vowel attack\'s follower: about 0.3 s up')
 w(f'const i32 kFollowFall = {onepole(1 / (2 * math.pi * 0.1), R)};    // both fall in about 100 ms')
 w('}')
 w('}')

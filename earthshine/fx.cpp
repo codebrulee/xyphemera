@@ -31,6 +31,22 @@ enum { kDecay, kTone, kLight, kShimmer, kDry, kMod, kFine, kWidth, kDelayChoice,
 const i32 kSubSemitones[3] = {-12, -24, -7};
 const i32 kUpSemitones[3] = {12, 7, 19};
 // The input all-passes' gains, shorter pair first (as Dattorro's input diffusion).
+// The vowel's resonators: damping 1/Q (Q 2.5), each formant's weight (summing
+// to one), and how much of the shimmer is voiced.
+// Character: the level the shimmer is driven at (its average, so a tone's peaks
+// reach about 0.95 of the curve: harmonics near -22 dB), and the gain out (plus
+// the 1.2 dB the vowel takes).
+const i32 kDriveLevel = 1288490189;  // 0.6
+const i32 kDriveMakeUp = 1234803097;  // 1.15, halved
+// The delay's drift: its span (half-rate samples, 3 ms) and ticks a target (1 s).
+const i32 kDriftSpan = 66;
+const u32 kDriftTicks = 22050;
+const i32 kFormantDamping = 858993459;  // 0.4: broad, so notes near a formant don't jump out
+const i32 kFormantWeight[3] = {1073741824, 751619277, 322122547};  // 0.5, 0.35, 0.15
+const i32 kFormantMix = 1288490188;  // 0.6
+// More vowel as each note starts, easing back as a slow follower (0.3 s)
+// catches the level: up to this much on top of kFormantMix.
+const i32 kFormantAccent = 644245094;  // 0.3
 const i32 kAllpassGain[4] = {1610612736, 1610612736, 1342177280, 1342177280};  // 0.75, 0.75, 0.625, 0.625
 
 i32 control(i32 word) { return word < 0 ? 0 : word; }
@@ -114,6 +130,30 @@ struct Search {
     i32 jump;               // the result, Q16, once kDone
 };
 
+// A gain beyond Q31's range: m (Q31, 0.5..1) times 2^e.
+struct Scale {
+    i32 m, e;
+};
+
+// x times a scale, saturating.
+i32 scaled(i32 x, const Scale& s) {
+    i32 y = multiply(x, s.m);
+    for (i32 n = 0; n < s.e; ++n) y = add(y, y);
+    return s.e < 0 ? y >> -s.e : y;
+}
+
+// The scale num / den (both non-negative Q31), held to 1/64 .. 64.
+Scale scale_of(i32 num, i32 den) {
+    i32 g = (num >> 1) / ((den >> 13) + 1);  // the ratio x 4096
+    if (g < 64) g = 64;
+    if (g > 262144) g = 262144;
+    Scale s = {0, 0};
+    while (g >= 4096) { g >>= 1; ++s.e; }
+    while (g < 2048) { g <<= 1; --s.e; }
+    s.m = g << 19;
+    return s;
+}
+
 struct Tank {
     u32 t;                       // half-rate sample count: every line's write position
     i32 odd;                     // decimation phase
@@ -126,6 +166,13 @@ struct Tank {
     i32 offset[4];               // the modulated read ages, Q16, gliding each tick
     i32 slide[4];                // per tick, toward the end of the block's
     i32 decay_word, tone;
+    i32 formant_f[3];            // the vowel's F1..F3 for this block (kFormant), Q31
+    i32 formant_low[3], formant_band[3];  // their state-variable filters
+    i32 follow_vowel;            // the level's slow follower for the vowel's attack
+    i32 vowel_low;               // the shimmer below the formants
+    i32 shimmer_level;           // the shimmer's level (for the drive)
+    Scale drive_in, drive_out;   // this block's gains into and out of the drive
+    i32 vowel_mix, vowel_target; // the vowel's blend now and this block's aim
     i32 sub_gain, up_gain, depth, width, pan;  // smoothed
     u32 pan_phase;               // the autopan's sway, 2^32 a cycle
     i32 pan_left, pan_right;     // this block's gains, Q31
@@ -133,6 +180,10 @@ struct Tank {
     // (their ratio, gliding each tick) and the slow one's rise (0: Swell off).
     i32 follow_fast, follow_slow, swell, swell_target, swell_rise;
     u32 shimmer_delay;           // Delay, half-rate samples
+    // The delay's human drift: a slow random walk of 0..3 ms, a new target each
+    // second (Q16 samples), and its random number.
+    i32 drift, drift_slide;
+    u32 drift_left, random;
     i32 rate;                    // the LFOs' speed, Q16 (1 to 2.5)
     i32 wet[2];
     i32 up_high[1], up_low[1], sub_high[1], sub_low[1][2];
@@ -386,12 +437,56 @@ void tick(Tank& k, const Lines& lines, i32 in_left, i32 in_right, bool listen_up
     k.follow_slow = k.swell_rise ? add(k.follow_slow, multiply(k.follow_fast - k.follow_slow,
                                                                k.follow_fast > k.follow_slow ? k.swell_rise : kFollowFall))
                                  : k.follow_fast;
+    k.follow_vowel = add(k.follow_vowel, multiply(k.follow_fast - k.follow_vowel,
+                                                  k.follow_fast > k.follow_vowel ? kVowelRise : kFollowFall));
     k.swell = add(k.swell, (k.swell_target >> 8) - (k.swell >> 8));  // about 12 ms: no ripple per block
     i32 shimmer = multiply(add(up_scaled, sub), k.swell);
-    if (k.shimmer_delay) {
+    // A vowel on the shimmer: three resonators at Tone's formants (F1, F2 and a
+    // softer F3), blended in for a choral colour. Each runs on an eighth of the
+    // signal (its peak is Q times its input) and is weighed back to unity.
+    {
+        i32 voice = 0;
+        const i32 in = shimmer >> 3;
+        for (u32 j = 0; j < 3; ++j) {
+            k.formant_low[j] = add(k.formant_low[j], multiply(k.formant_f[j], k.formant_band[j]));
+            const i32 high = add(add(in, -k.formant_low[j]), -multiply(kFormantDamping, k.formant_band[j]));
+            k.formant_band[j] = add(k.formant_band[j], multiply(k.formant_f[j], high));
+            voice = add(voice, multiply(multiply(k.formant_band[j], kFormantDamping), kFormantWeight[j]));
+        }
+        voice = add(add(add(voice, voice), add(voice, voice)), add(add(voice, voice), add(voice, voice)));  // x 8
+        // Below the formants the voice is the shimmer itself, so the sub keeps
+        // its body: the vowel colours only the mids and up.
+        voice = add(voice, onepole(k.vowel_low, shimmer, kVowelLow));
+        k.vowel_mix = add(k.vowel_mix, (k.vowel_target >> 8) - (k.vowel_mix >> 8));
+        shimmer = add(shimmer, multiply(add(voice, -shimmer), k.vowel_mix));
+    }
+    // Character: the shimmer brought to one level (kDriveLevel), driven into a
+    // soft, slightly lopsided curve (the tank's warm, plus a little second
+    // harmonic, as a valve stage), then returned to its own level. The same
+    // character however loud it is; the tank's input DC block takes out the
+    // second harmonic's offset.
+    {
+        k.shimmer_level = add(k.shimmer_level, multiply((shimmer < 0 ? -(shimmer + 1) : shimmer) - k.shimmer_level, kFollowFast));
+        i32 driven = scaled(shimmer, k.drive_in);
+        driven = add(warm(driven), multiply(driven, driven) >> 3);
+        shimmer = scaled(driven, k.drive_out);
+    }
+    {
+        // Delay, drifting by up to 3 ms so the shimmer's timing breathes like a
+        // player's. Moving a delay bends its pitch a touch: a second a target
+        // keeps that under about 5 cents.
+        if (!k.drift_left) {
+            k.random = k.random * 1664525u + 1013904223u;
+            const i32 target = static_cast<i32>(k.random >> 16) * kDriftSpan;  // Q16 samples, 0..span
+            k.drift_slide = (target - k.drift) / static_cast<i32>(kDriftTicks);
+            k.drift_left = kDriftTicks;
+        }
+        k.drift += k.drift_slide;
+        --k.drift_left;
         const Line& l = lines.line[kShimmerLine];
         l.words[t & l.mask] = shimmer;
-        shimmer = l.words[(t - k.shimmer_delay) & l.mask];
+        const i32 age = static_cast<i32>((k.shimmer_delay + 2) << 16) + k.drift;
+        shimmer = linear(l, t, age);
     }
     i32 inject[2];
     for (i32 ch = 0; ch < 2; ++ch) inject[ch] = add(delayed[ch], shimmer);
@@ -470,6 +565,7 @@ void setup(Tank& k) {
     k.width = -1;  // none yet: the first block takes the control as it is
     k.pan = -1;
     k.swell = k.swell_target = kMaximum;
+    k.vowel_mix = k.vowel_target = kFormantMix;
     k.rate = 65536;
     k.shifter[0].age[0] = k.shifter[0].age[1] = (kUp.low + kUp.centre[0]) << 16;
     k.shifter[1].age[0] = k.shifter[1].age[1] = (kSub.low + kSub.centre[0] / 2) << 16;
@@ -489,6 +585,10 @@ void controls(Tank& k, opxy::Parameters p) {
     const i32 target_tone = at_index >= 32 ? kToneCoefficient[32]
                                            : kToneCoefficient[at_index] + ((kToneCoefficient[at_index + 1] - kToneCoefficient[at_index]) >> 10) * static_cast<i32>(part);
     k.tone = target_tone;
+    // The vowel follows Tone along the same 33 points.
+    for (u32 j = 0; j < 3; ++j)
+        k.formant_f[j] = at_index >= 32 ? kFormant[32][j]
+                                        : kFormant[at_index][j] + ((kFormant[at_index + 1][j] - kFormant[at_index][j]) >> 10) * static_cast<i32>(part);
     // Mod: up to 10 ms (220 samples) of drift, Q16, on a squared curve so its
     // first half covers the gentle range; the LFOs speed up to 2.5 times as fast.
     const i32 mod = control(p[kMod]);
@@ -525,6 +625,20 @@ void controls(Tank& k, opxy::Parameters p) {
         const i32 ratio = ((k.follow_slow >> 16) << 15) / ((k.follow_fast >> 16) + 1);
         const i32 linear = ratio >= 32768 ? kMaximum : ratio << 16;
         k.swell_target = multiply(linear, linear);  // squared: a quieter start, a longer rise
+    }
+    // The vowel's attack: the gap between the level and its slow follower.
+    if (k.follow_fast < (1 << 16)) {
+        k.vowel_target = kFormantMix;
+    } else {
+        const i32 ratio = ((k.follow_vowel >> 16) << 15) / ((k.follow_fast >> 16) + 1);  // Q15
+        const i32 gap = ratio >= 32768 ? 0 : (32768 - ratio) << 16;                       // Q31, 0..1
+        k.vowel_target = add(kFormantMix, multiply(gap, kFormantAccent));
+    }
+    // The drive's gains: into the curve at kDriveLevel, and back out.
+    {
+        const i32 level = k.shimmer_level > 4096 ? k.shimmer_level : 4096;
+        k.drive_in = scale_of(kDriveLevel, level);
+        k.drive_out = scale_of(multiply(level, kDriveMakeUp), kDriveLevel >> 1);
     }
     const u32 sub = choice(p[kSubInterval], 3), up = choice(p[kUpInterval], 3);
     k.up_wide = up == 2;

@@ -1,7 +1,7 @@
 // Renders a test phrase through an effect's fixed-point code (as on the device)
 // to 24-bit WAVs: <out>_wet.wav and <out>_mix.wav (the dry at 0.7 plus the wet).
 //
-//   g++ -O2 -std=c++17 -I<open-xy>/sdk/include -I<effect> -DNS=earthshine \
+//   g++ -O2 -std=c++17 -I<open-xy>/sdk/include -I<effect> -DNS=earthshine
 //       -DPARAMETERS="..." [-DTRANSPOSE=-12] tools/render/abrender.cpp -o render
 //   ./render <out> <gain>
 //
@@ -13,6 +13,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <initializer_list>
+#include <algorithm>
 #include <vector>
 #include <chrono>
 #ifndef TRANSPOSE
@@ -65,6 +67,16 @@ int main(int argc, char** argv) {
     }
     std::vector<float> ml(wl.size()), mr(wl.size());
     for (size_t i = 0; i < wl.size(); ++i) { ml[i] = 0.7 * L[i] + gain * wl[i]; mr[i] = 0.7 * R[i] + gain * wr[i]; }
+    // End 0.4 s after the mix last rises above -60 dBFS, fading the last 0.2 s,
+    // rather than at the phrase's full length.
+    size_t end = ml.size();
+    while (end > 0 && std::fabs(ml[end - 1]) < 0.001 && std::fabs(mr[end - 1]) < 0.001) --end;
+    end = std::min(ml.size(), end + 17640);
+    for (std::vector<float>* v : {&wl, &wr, &ml, &mr}) {
+        v->resize(end);
+        const size_t fade = std::min<size_t>(8820, end);
+        for (size_t i = 0; i < fade; ++i) (*v)[end - 1 - i] *= static_cast<float>(i) / fade;
+    }
     wav(std::string(argv[1]) + "_wet.wav", wl, wr, gain);
     wav(std::string(argv[1]) + "_mix.wav", ml, mr, 1);
     std::printf("%s: wet peak %.3f, host time %.1f ms\n", argv[1], peak, secs * 1000);
