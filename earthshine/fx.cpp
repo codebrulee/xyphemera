@@ -137,9 +137,10 @@ struct Scale {
 
 // x times a scale, saturating.
 i32 scaled(i32 x, const Scale& s) {
-    i32 y = multiply(x, s.m);
-    for (i32 n = 0; n < s.e; ++n) y = add(y, y);
-    return s.e < 0 ? y >> -s.e : y;
+    const i32 y = multiply(x, s.m);
+    if (s.e <= 0) return y >> -s.e;
+    const i32 limit = kMaximum >> s.e;  // beyond it the shift would overflow
+    return y > limit ? kMaximum : y < -limit ? -kMaximum : y << s.e;
 }
 
 // The scale num / den (both non-negative Q31), held to 1/64 .. 64.
@@ -165,6 +166,7 @@ struct Tank {
     u32 lfo[4];
     i32 offset[4];               // the modulated read ages, Q16, gliding each tick
     i32 slide[4];                // per tick, toward the end of the block's
+    i32 still;                   // Mod off and every line at its length: plain reads
     i32 decay_word, tone;
     i32 formant_f[3];            // the vowel's F1..F3 for this block (kFormant), Q31
     i32 formant_low[3], formant_band[3];  // their state-variable filters
@@ -186,6 +188,7 @@ struct Tank {
     u32 drift_left, random;
     i32 rate;                    // the LFOs' speed, Q16 (1 to 2.5)
     i32 wet[2];
+    i32 heard[2];
     i32 up_high[1], up_low[1], sub_high[1], sub_low[1][2];
     i32 pitch_key;
     Search search;               // one splice search at a time
@@ -506,12 +509,20 @@ void tick(Tank& k, const Lines& lines, i32 in_left, i32 in_right, bool listen_up
     }
     // The FDN, four lines, each read between two samples with its own slow drift.
     i32 y[4], f[4];
-    for (u32 c = 0; c < 4; ++c) {
-        const Line& l = lines.line[kFdnLine + c];
-        const i32 age = k.offset[c] += k.slide[c];
-        const u32 at_age = t - (static_cast<u32>(age) >> 16);
-        const i32 a0 = l.words[at_age & l.mask] >> 1, a1 = l.words[(at_age - 1) & l.mask] >> 1;
-        y[c] = f[c] = add(a0, multiply(a1 - a0, (age & 0xffff) << 15)) * 2;
+    if (k.still) {
+        // Mod off and settled: each line read at its length, no interpolation.
+        for (u32 c = 0; c < 4; ++c) {
+            const Line& l = lines.line[kFdnLine + c];
+            y[c] = f[c] = l.words[(t - kFdnLen[c]) & l.mask];
+        }
+    } else {
+        for (u32 c = 0; c < 4; ++c) {
+            const Line& l = lines.line[kFdnLine + c];
+            const i32 age = k.offset[c] += k.slide[c];
+            const u32 at_age = t - (static_cast<u32>(age) >> 16);
+            const i32 a0 = l.words[at_age & l.mask] >> 1, a1 = l.words[(at_age - 1) & l.mask] >> 1;
+            y[c] = f[c] = add(a0, multiply(a1 - a0, (age & 0xffff) << 15)) * 2;
+        }
     }
     householder(f);
     // Back in: each line's damped, scaled, warmed signal, plus the diffused input
@@ -537,6 +548,11 @@ void tick(Tank& k, const Lines& lines, i32 in_left, i32 in_right, bool listen_up
     for (u32 ch = 0; ch < 2; ++ch) out[ch] = add(out[ch], multiply(out[ch], 718916480));  // x 1.335
     k.wet[0] = out[0];
     k.wet[1] = out[1];
+    {
+        const i32 mid = add(out[0] >> 1, out[1] >> 1), side = multiply(add(out[0] >> 1, -(out[1] >> 1)), k.width);
+        k.heard[0] = multiply(add(mid, side), k.pan_left);
+        k.heard[1] = multiply(add(mid, -side), k.pan_right);
+    }
 }
 
 
@@ -554,6 +570,10 @@ void modulate(Tank& k) {
         const i32 target = static_cast<i32>(kFdnLen[c] << 16) + multiply(k.depth, (wave >> 1) + 0x40000000);
         k.slide[c] = (target - k.offset[c]) / static_cast<i32>(kModTicks);
     }
+    // Still once Mod is off and every line has glided back to its length.
+    k.still = !k.depth;
+    for (u32 c = 0; c < 4; ++c)
+        if (k.slide[c] || k.offset[c] != static_cast<i32>(kFdnLen[c] << 16)) k.still = 0;
 }
 
 void setup(Tank& k) {
@@ -678,7 +698,8 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
         setup(stored);
         state.ready = 1;
     }
-    // The tank's state is worked on in a local copy (fast memory), then stored.
+    // The tank's state is worked on in a local copy, which the compiler
+    // addresses more cheaply than the buffer, then stored.
     Tank k = stored;
     Lines lines;
     for (u32 n = 0; n < kLines; ++n) lines.line[n] = Line{buffer.words + kLineOffset[n], kLineMask[n]};
@@ -707,7 +728,7 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
             tick(k, lines, l, r, listen_up, listen_sub);
             for (i32 ch = 0; ch < 2; ++ch) {
                 k.held[ch][0] = k.held[ch][1];
-                k.held[ch][1] = k.wet[ch];
+                k.held[ch][1] = k.heard[ch];
             }
         }
         // Back to full rate: halfway between the last two, then the latest,
@@ -719,9 +740,8 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
         }
         k.odd = !k.odd;
         // Width: keep the middle, scale the sides, then the autopan's sway.
-        const i32 mid = add(o[0] >> 1, o[1] >> 1), side = multiply(add(o[0] >> 1, -(o[1] >> 1)), k.width);
-        left[i] = multiply(add(mid, side), k.pan_left);
-        right[i] = multiply(add(mid, -side), k.pan_right);
+        left[i] = o[0];
+        right[i] = o[1];
     }
     stored = k;
 }
