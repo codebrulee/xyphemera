@@ -134,8 +134,7 @@ struct Tank {
     i32 follow_fast, follow_slow, swell, swell_target, swell_rise;
     u32 shimmer_delay;           // Delay, half-rate samples
     i32 rate;                    // the LFOs' speed, Q16 (1 to 2.5)
-    i32 wet[2];                  // what is heard: the line ends and their taps
-    i32 ends;                    // the line ends alone, the up shimmer's source
+    i32 wet[2];
     i32 up_high[1], up_low[1], sub_high[1], sub_low[1][2];
     i32 pitch_key;
     Search search;               // one splice search at a time
@@ -366,7 +365,7 @@ void tick(Tank& k, const Lines& lines, i32 in_left, i32 in_right, bool listen_up
     sub = onepole(k.sub_low[0][1], onepole(k.sub_low[0][0], sub, kSubLow), kSubLow);
     // The up layer: one shifter on the wet's middle, fed back to both sides
     // (the tank spreads it again), band-limited to 250 Hz .. 6 kHz.
-    i32 up = shift(k.shifter[0], 0, lines.line[kShiftLine], t, k.ends,
+    i32 up = shift(k.shifter[0], 0, lines.line[kShiftLine], t, add(k.wet[0] >> 1, k.wet[1] >> 1),
                    k.up_wide ? kUpWide : kUp, k.up_wide ? 1 : 0, 0, listen_up, k.search);
     // The splice search in progress, a tick's worth.
     if (k.search.owner && k.search.phase != kDone) {
@@ -443,9 +442,6 @@ void tick(Tank& k, const Lines& lines, i32 in_left, i32 in_right, bool listen_up
     for (u32 ch = 0; ch < 2; ++ch) out[ch] = add(out[ch], multiply(out[ch], 718916480));  // x 1.335
     k.wet[0] = out[0];
     k.wet[1] = out[1];
-    // The up shimmer takes the line ends only: the taps, at fixed spacings, act
-    // as a comb, and through the shimmer's feedback that comb rings metallic.
-    k.ends = add(add(y[0] >> 1, -(y[2] >> 1)), add(y[1] >> 1, -(y[3] >> 1)));
 }
 
 
