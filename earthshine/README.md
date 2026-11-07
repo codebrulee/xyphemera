@@ -25,11 +25,11 @@ An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
 
 ## How it works
 
-- A 4-line feedback delay network after four all-passes per side, running
+- A 4-line feedback delay network after three all-passes per side, running
   at half rate (22,050 Hz): dark by design, and light enough for the OP-XY
   (its cost is the tank's arithmetic, so the tank is kept small). Its lines
   are long, so it has as many resonances as an 8-line tank and low notes'
-  tails ring on pitch; output taps along each line keep it a wash, not echoes.
+  tails ring on pitch; two output taps along each line keep it a wash, not echoes.
 - Correlation-aligned pitch shifters: each splice lands, to a fraction of a
   sample, where the outgoing and incoming waveforms match, so the layers hold
   pitch (within a cent at the exact intervals; free-running grains drift by

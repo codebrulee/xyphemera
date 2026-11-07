@@ -450,7 +450,7 @@ void tick(Tank& k, const Lines& lines, i32 in_left, i32 in_right, bool listen_up
     {
         i32 voice = 0;
         const i32 in = shimmer >> 3;
-        for (u32 j = 0; j < 3; ++j) {
+        for (u32 j = 0; j < 2; ++j) {
             k.formant_low[j] = add(k.formant_low[j], multiply(k.formant_f[j], k.formant_band[j]));
             const i32 high = add(add(in, -k.formant_low[j]), -multiply(kFormantDamping, k.formant_band[j]));
             k.formant_band[j] = add(k.formant_band[j], multiply(k.formant_f[j], high));
@@ -497,7 +497,7 @@ void tick(Tank& k, const Lines& lines, i32 in_left, i32 in_right, bool listen_up
     // Spread the two sides over eight channels, then diffuse.
     for (i32 ch = 0; ch < 2; ++ch) {
         i32 v = add(inject[ch], -onepole(k.dc[ch], inject[ch], kDcBlock));
-        for (u32 s = 0; s < 4; ++s) {
+        for (u32 s = 1; s < 4; ++s) {
             const Line& l = lines.line[kAllpassLine + ch * 4 + s];
             const i32 g = kAllpassGain[s];
             const i32 d = at(l, t, kAllpassLen[ch][s]);
@@ -542,7 +542,6 @@ void tick(Tank& k, const Lines& lines, i32 in_left, i32 in_right, bool listen_up
         i32 sum = y[c] >> 1;
         sum = add(sum, l.words[(t - kTap[c][0]) & l.mask] >> 1);
         sum = add(sum, -(l.words[(t - kTap[c][1]) & l.mask] >> 1));
-        sum = add(sum, l.words[(t - kTap[c][2]) & l.mask] >> 1);
         out[c & 1] = add(out[c & 1], (c & 2) ? -sum : sum);
     }
     for (u32 ch = 0; ch < 2; ++ch) out[ch] = add(out[ch], multiply(out[ch], 718916480));  // x 1.335
