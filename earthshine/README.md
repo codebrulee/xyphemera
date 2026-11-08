@@ -2,8 +2,9 @@
 
 A shimmer reverb for the OP-XY's sends: a warm, wide tank whose tail is
 pitch-shifted back into itself. The **sub** layer sits an interval under the
-notes (an octave by default); the **up** layer climbs above them. Light turns
-from the moon (all sub) to the sun (all up); Shimmer sets how much of either.
+notes (an octave by default); the **up** layer climbs above them, an octave
+at a time or as a halo that rises or falls for ever. Light turns from the moon
+(all sub) to the sun (all up); Shimmer sets how much of either.
 An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
 
 ## Controls
@@ -11,19 +12,26 @@ An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
 | | 1 | 2 | 3 | 4 |
 | --- | --- | --- | --- | --- |
 | Page 1 | Decay (1 to 20 s) | Tone (dark to bright) | Light (moon to sun) | Shimmer |
-| Page 2 (press) | Dry | Mod | Fine (stretch, ±25 cents) | Width (mono to wide) |
-| Shift | Delay (0, 100, 250, 500 ms) | Swell (off, 0.5, 1, 2 s) | Sub (−12, −24, −7) | Up (+12, +7, +19) |
+| Page 2 (press) | Dry | Mod | Fine (stretch ±25 cents, or the halo's character) | Width (mono to wide) |
+| Shift | Delay (0, 100, 250, 500 ms) | Swell (off, 0.5, 1, 2 s) | Sub (−12, −24, −7) | Up (+12, rise, fall) |
 
 - **Dry** keeps the source in the stock mixer at full send; it does not add
   clean audio to the return.
-- **Mod** drifts the tank's delay lines, by up to 10 ms and up to 2.5 times as fast at full: gentle through its first half, seasick at the top. It defaults to off.
+- **Mod** drifts the tank's delay lines, by up to 10 ms and up to 2.5 times as fast at full: gentle through its first half, seasick at the top. It defaults to 20%, enough to keep the tank's resonances from singling out a note.
 - **Light**'s last 5% at each end turns the other layer fully off, and its
   pitch shifter stops working: the far ends are the lightest settings.
 - **Delay** holds the shimmer back before it reaches the tank; the reverb itself starts at once.
 - **Swell** fades the shimmer in after each note, as a slow follower of the input catches a fast one.
-- **Tone** sets the tank's damping (700 Hz to 9 kHz) and the vowel the shimmer sings: "oo" when dark, "oh", "ah" in the middle, "eh" when bright. The vowel is broad and blended in (more as each note starts), and leaves the shimmer below 250 Hz alone so the sub keeps its body.
+- **Tone** sets the tank's damping, from 700 Hz to 9 kHz.
 - **Width** opens the wet from mono (0) to the tank's full spread (70, its default); above 70 a slow autopan sways it, subtle at first and pronounced at 100.
-- **Fine** stretches the intervals: up sharper and sub flatter as it rises.
+- **Up** is the octave above (+12), or a halo: resonant bands that move through
+  the tail, rising (rise) or falling (fall), each fading in at one end and out
+  at the other, so the movement never ends. The halo colours the tail without
+  shifting its pitch.
+- **Fine** stretches the intervals with the octave: up sharper and sub flatter
+  as it rises. With a halo it sets the halo's character instead, from fast
+  and soft (5 s through its range) to slow and glassy (30 s, sharper
+  resonances), and the sub stays exact.
 
 ## How it works
 
@@ -39,12 +47,17 @@ An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
 - Correlation-aligned pitch shifters: each splice lands, to a fraction of a
   sample, where the outgoing and incoming waveforms match, so the layers hold
   pitch (within a cent at the exact intervals; free-running grains drift by
-  over a semitone). The search for each splice runs a little each sample over
-  the blocks before the splice is due, one search at a time, so no single
-  block carries it.
+  over a semitone). Each shifter's search for its next splice runs a fixed
+  amount each sample, pausing even mid-comparison, starting early enough to
+  finish before the splice is due, so no single block carries it.
 - The sub layer shifts the input once, in mono, so it stays one interval down
   instead of falling further each pass; the up layer shifts the wet's middle
-  and recirculates, so it climbs, and the tank spreads it back to stereo.
+  and recirculates, so it climbs, and the tank spreads it back to stereo. The
+  halo takes its place: four band-passes (trapezoidal state-variable filters,
+  stable to the top of their range) on the wet's middle, a quarter of the
+  range (250 Hz to 6 kHz) apart. Most of it goes straight to the output and a
+  quarter recirculates: fed back in full, it piles up whichever of the tank's
+  resonances a band lingers on into one tone.
   Mod drifts both halves' delays. Fine's
   stretched octaves stack partials that share no period, so with Fine away
   from centre the recirculating layer wanders a few cents.

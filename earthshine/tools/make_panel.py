@@ -34,9 +34,10 @@ POINTS = 64
 AXIS_HALF = 34             # the axis's authored half length; display.cpp scales it
 
 # Text widths at 10 px, Univers Next Light, for centring the interval labels.
-WIDTH = {'-': 3.3, '+': 5.8, '1': 5.6, '2': 5.6, '4': 5.6, '7': 5.6, '9': 5.6}
+WIDTH = {'-': 3.3, '+': 5.8, '1': 5.6, '2': 5.6, '4': 5.6, '7': 5.6, '9': 5.6,
+         'r': 3.3, 'i': 2.2, 's': 4.6, 'e': 5.3, 'f': 2.9, 'a': 5.2, 'l': 2.2}
 SUB = ['-12', '-24', '-7']
-UP = ['+12', '+7', '+19']
+UP = ['+12', 'rise', 'fall']  # the octave, or the halo rising or falling
 
 
 def num(x):

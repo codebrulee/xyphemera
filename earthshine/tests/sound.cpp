@@ -154,8 +154,6 @@ int main() {
         {"two octaves down are in tune", 0, 1, 0, 0.5, 0.25, 3},
         {"a fifth down is in tune", 0, 2, 0, 0.5, std::pow(2.0, -7.0 / 12), 3},
         {"the octave up is in tune", 1, 0, 0, 0.5, 2.0, 3},
-        {"a fifth up is in tune", 1, 0, 1, 0.5, std::pow(2.0, 7.0 / 12), 3},
-        {"an octave and a fifth up is in tune", 1, 0, 2, 0.5, std::pow(2.0, 19.0 / 12), 3},
         {"the tank itself keeps pitch", 1, 0, 0, 0.5, 1.0, 3},
         {"Fine stretches the octave up by 25 cents", 1, 0, 0, 1.0, 2.0 * std::pow(2.0, 25.0 / 1200), 5},
         {"Fine stretches the sub octave down by 25 cents", 0, 0, 0, 1.0, 0.5 * std::pow(2.0, -25.0 / 1200), 3},
@@ -187,6 +185,30 @@ int main() {
         const double on_ratio = power(on, 110, 2, 4) / power(on, 220, 2, 4);
         check("no sub without Shimmer", off_ratio < 1e-4);
         check("a sub with Shimmer", on_ratio > 0.05);
+    }
+
+    // The halo (Up's rise and fall) colours the tail without shifting it: at
+    // the sun end it adds to the wet (a 1 kHz tone, inside its 250 Hz .. 6 kHz)
+    // and the tone stays where it is.
+    {
+        Settings s;
+        s.light = 1;
+        s.shimmer = 0;
+        const std::vector<double> plain = run(s, 6, sine(1000));
+        s.shimmer = 1;
+        for (unsigned up = 1; up <= 2; ++up) {
+            s.up = up;
+            const std::vector<double> halo = run(s, 6, sine(1000));
+            double changed = 0, total = 0;
+            for (size_t n = 44100 * 2; n < halo.size(); ++n) {
+                changed += (halo[n] - plain[n]) * (halo[n] - plain[n]);
+                total += plain[n] * plain[n];
+            }
+            const double found = strongest_near(halo, 1000, 2, 6);
+            if (std::fabs(cents(found, 1000)) > 3) std::printf("  halo %u: %.2f Hz\n", up, found);
+            check(up == 1 ? "the rising halo adds to the wet" : "the falling halo adds to the wet", changed > total * 0.01);
+            check(up == 1 ? "the rising halo keeps the note's pitch" : "the falling halo keeps the note's pitch", std::fabs(cents(found, 1000)) <= 3);
+        }
     }
 
     // Width 0 is mono; full width keeps the sides apart.
@@ -321,6 +343,7 @@ int main() {
 
     // The heaviest settings stay bounded and die away once the input stops.
     const double lights[3] = {0, 0.5, 1};
+    for (unsigned up = 0; up < 3; up += 2)
     for (double light : lights) {
         Settings s;
         s.decay = 1;
@@ -328,7 +351,7 @@ int main() {
         s.light = light;
         s.mod = 1;
         s.tone = 1;
-        s.up = 2;
+        s.up = up;
         const std::vector<double> out = run(s, 40, [](unsigned n) {
             return n < 44100 ? static_cast<opxy::i32>((n * 2654435761u) & 0x3fffffff) - 0x20000000 : 0;
         });

@@ -29,24 +29,14 @@ const u32 kClearPerBlock = 2048;  // words zeroed per block while starting (memo
 // The controls, in definition.json order, then the Shift row: Delay, Swell, Sub, Up.
 enum { kDecay, kTone, kLight, kShimmer, kDry, kMod, kFine, kWidth, kDelayChoice, kSwellChoice, kSubInterval, kUpInterval };
 const i32 kSubSemitones[3] = {-12, -24, -7};
-const i32 kUpSemitones[3] = {12, 7, 19};
 // The input all-passes' gains, shorter pair first (as Dattorro's input diffusion).
-// The vowel's resonators: damping 1/Q (Q 2.5), each formant's weight (summing
-// to one), and how much of the shimmer is voiced.
 // Character: the level the shimmer is driven at (its average, so a tone's peaks
-// reach about 0.95 of the curve: harmonics near -22 dB), and the gain out (plus
-// the 1.2 dB the vowel takes).
+// reach about 0.95 of the curve: harmonics near -22 dB), and the gain out.
 const i32 kDriveLevel = 1288490189;  // 0.6
 const i32 kDriveMakeUp = 1234803097;  // 1.15, halved
 // The delay's drift: its span (half-rate samples, 3 ms) and ticks a target (1 s).
 const i32 kDriftSpan = 66;
 const u32 kDriftTicks = 22050;
-const i32 kFormantDamping = 858993459;  // 0.4: broad, so notes near a formant don't jump out
-const i32 kFormantWeight[3] = {1073741824, 751619277, 322122547};  // 0.5, 0.35, 0.15
-const i32 kFormantMix = 1288490188;  // 0.6
-// More vowel as each note starts, easing back as a slow follower (0.3 s)
-// catches the level: up to this much on top of kFormantMix.
-const i32 kFormantAccent = 644245094;  // 0.3
 const i32 kDiffuse1 = 1503238554;  // 0.7: the loop's first diffusers (as -0.7)
 const i32 kAllpassGain[kAllpasses] = {1610612736, 1610612736, 1342177280};  // 0.75, 0.75, 0.625
 
@@ -105,29 +95,30 @@ struct Shifter {
 // Shifter geometry at half rate, by kind: up taps jump back, sub taps forward.
 struct Geometry {
     i32 xfade, centre[2], search, match, low, high;
-    i32 early;      // samples before low/high a splice may start, to wait its turn
+    i32 early;      // samples before low/high its search starts, to finish in time
     i32 fade_step;  // Q31 per splice sample: kMaximum / xfade
+    i32 budget;     // its search's work a tick, in correlation products
 };
 // Up: 15 ms splice, 33/39 ms jumps +-12 ms, 10 ms match; room for up to +19.
 // Sub: 30 ms splice, 64/76 ms jumps +-15 ms, 20 ms match.
-const Geometry kUp = {331, {728, 860}, 265, 220, 886, 0, 256, 2147483647 / 331};
-// Up an octave and a fifth: the taps move twice as fast, so the jumps are
-// doubled to keep each grain well beyond its splice.
-const Geometry kUpWide = {331, {1456, 1720}, 265, 220, 886, 0, 256, 2147483647 / 331};
-const Geometry kSub = {662, {1411, 1676}, 331, 441, 445, 2452, 128, 2147483647 / 662};
+const Geometry kUp = {331, {728, 860}, 265, 220, 886, 0, 320, 2147483647 / 331, 24};
+// The sub's search is the longest (a 20 ms match over +-15 ms): it starts 560
+// samples early, which -24's faster taps still cover after the splice.
+const Geometry kSub = {662, {1411, 1676}, 331, 441, 445, 2452, 560, 2147483647 / 662, 16};
 // A search's reference and lags must fit the scratch.
-static_assert(2 * 441 + 2 * 331 <= static_cast<int>(tables::kScratchWords), "sub search scratch");
-static_assert(2 * 220 + 2 * 265 <= static_cast<int>(tables::kScratchWords), "up search scratch");
+static_assert(2 * 220 + 2 * 265 <= static_cast<int>(tables::kSubScratch), "up search scratch");
+static_assert(2 * 441 + 2 * 331 <= static_cast<int>(tables::kScratchWords - tables::kSubScratch), "sub search scratch");
 
 // The splice search in progress (search_start, search_step).
 struct Search {
     i32 owner;              // the searching shifter + 1 (0: none)
-    i32 geometry;           // its geometry: 0 up, 1 wide up, 2 sub
+    i32 geometry;           // its geometry: 0 up, 2 sub
     i32 phase, i;           // kCopying.. and its progress
     u32 t0;                 // the tick it started
     i32 a, up, centre, shift;
     i32 best, best_score, fine_from;
     i32 score_at[15];
+    i32 lag, k, c, e;       // the lag being scored, paused at sample k with its sums
     i32 jump;               // the result, Q16, once kDone
 };
 
@@ -156,6 +147,14 @@ Scale scale_of(i32 num, i32 den) {
     return s;
 }
 
+// The halo's state: its bands' filter states, and this block's coefficients
+// (the state-variable filter's a1..a3 and each band's gain, with its fade).
+struct Halo {
+    u32 phase;                   // where the bands are in their sweep, 2^32 a sweep
+    i32 ic1[4], ic2[4];
+    i32 a1[4], a2[4], a3[4], gain[4];
+};
+
 struct Tank {
     u32 t;                       // half-rate sample count: every line's write position
     i32 down;                    // decimation one-pole, on the input's mono
@@ -167,13 +166,8 @@ struct Tank {
     i32 slide[2];                // per tick, toward the end of the block's
     i32 still;                   // Mod off and every line at its length: plain reads
     i32 decay_word, tone;
-    i32 formant_f[3];            // the vowel's F1..F3 for this block (kFormant), Q31
-    i32 formant_low[3], formant_band[3];  // their state-variable filters
-    i32 follow_vowel;            // the level's slow follower for the vowel's attack
-    i32 vowel_low;               // the shimmer below the formants
     i32 shimmer_level;           // the shimmer's level (for the drive)
     Scale drive_in, drive_out;   // this block's gains into and out of the drive
-    i32 vowel_mix, vowel_target; // the vowel's blend now and this block's aim
     i32 sub_gain, up_gain, depth, width, pan;  // smoothed
     u32 pan_phase;               // the autopan's sway, 2^32 a cycle
     i32 pan_left, pan_right;     // this block's gains, Q31
@@ -190,8 +184,10 @@ struct Tank {
     i32 heard[2];
     i32 up_high[1], up_low[1], sub_high[1], sub_low[1][2];
     i32 pitch_key;
-    Search search;               // one splice search at a time
-    i32 up_wide;                 // the up interval is +19: kUpWide
+    Search search[2];            // each shifter's splice search: up, sub
+    i32 halo_mode;               // Up: 0 the octave, 1 the halo rising, 2 falling
+    Halo halo;
+    i32 halo_direct;             // the halo's share heard directly, this tick
     Shifter shifter[2];          // up, sub
 };
 
@@ -230,11 +226,13 @@ i32 bits(u32 v) {
 // every 8th lag, then every lag around the best, then a parabola to a fraction
 // of a sample. Samples are reduced to 12 bits so the sums fit 32 bits.
 //
-// One search runs at a time, a little each tick (kSearchBudget products), so no
-// block carries a whole search: it starts `early` samples before the tap runs
-// out and is done well before. Ages are taken at the tick it starts (t0): the
-// taps keep their spacing, so the jump holds whenever it is applied.
-const i32 kSearchBudget = 64;  // correlation products a tick
+// Each shifter has its own search, which runs a fixed amount each tick (its
+// geometry's budget, in correlation products, a copied sample costing two:
+// enough to finish inside its window), pausing even inside a lag, so no block
+// carries more than its share: it starts `early`
+// samples before the tap runs out and is done before. Ages are taken at the
+// tick it starts (t0): the taps keep their spacing, so the jump holds whenever
+// it is applied.
 enum { kIdle, kCopying, kCoarse, kRefining, kDone };
 
 void search_start(Search& q, const Line& l, u32 t, i32 a, bool up, i32 centre, i32 who, i32 geometry, const Geometry& g) {
@@ -263,57 +261,71 @@ void search_start(Search& q, const Line& l, u32 t, i32 a, bool up, i32 centre, i
     q.phase = kCopying;
 }
 
-// One tick of the search: copies, then lags, up to kSearchBudget products.
-void search_step(Search& q, const Line& l, i32* scratch, const Geometry& g) {
+// One tick of the search: copies, then lags, `budget` products' worth.
+__attribute__((noinline)) void search_step(Search& q, const Line& l, i32* scratch, const Geometry& g) {
+    i32 budget = g.budget;
     const i32 m = g.match, span = 2 * g.search + m;
     i32* const ref = scratch;
     i32* const cand = scratch + m;  // cand[idx]: the sample at age (at t0) base + idx
     const i32 base = q.up ? q.a + q.centre - g.search - (m - 1) : q.a - (q.centre + g.search) - (m - 1);
-    i32 budget = kSearchBudget;
     if (q.phase == kCopying) {
-        // Reference, then candidates, four samples a product's worth.
-        for (; q.i < m + span && budget > 0; ++q.i) {
+        // Reference, then candidates, two products' worth a sample.
+        for (; q.i < m + span && budget > 0; ++q.i, budget -= 2) {
             const i32 age = q.i < m ? q.a - q.i : base + (q.i - m);
             i32 v = at(l, q.t0, age) >> q.shift;
             v = v > 2047 ? 2047 : v < -2047 ? -2047 : v;
             if (q.i < m) ref[q.i] = v;
             else cand[q.i - m] = v;
-            if ((q.i & 3) == 3) --budget;
         }
         if (q.i < m + span) return;
         q.phase = kCoarse;
         q.i = q.centre - g.search;
+        q.k = 0;
     }
     // A lag j's samples: cand[offset(j) - k], k = 0..m-1. Score c^2 / e (c > 0)
     // on reduced sums: c is at most 110 x 2047^2, under 2^29, so c >> 14
     // squared stays under 2^31.
     while (budget > 0 && (q.phase == kCoarse || q.phase == kRefining)) {
         const bool fine = q.phase == kRefining;
-        const i32 to = fine ? q.fine_from + 14 : q.centre + g.search;
-        if (q.i > to) {
-            if (fine) {
-                q.phase = kDone;
-                break;
+        if (q.k == 0) {
+            // The next lag, or the next phase.
+            const i32 to = fine ? q.fine_from + 14 : q.centre + g.search;
+            if (q.i > to) {
+                if (fine) {
+                    q.phase = kDone;
+                    break;
+                }
+                q.phase = kRefining;
+                q.fine_from = q.best - 7;
+                q.i = q.fine_from;
+                q.best_score = -1;
+                for (i32 n = 0; n < 15; ++n) q.score_at[n] = -1;
+                continue;
             }
-            q.phase = kRefining;
-            q.fine_from = q.best - 7;
-            q.i = q.fine_from;
-            q.best_score = -1;
-            for (i32 n = 0; n < 15; ++n) q.score_at[n] = -1;
-            continue;
+            q.lag = q.i;
+            q.i += fine ? 1 : 8;
+            if (q.lag < q.centre - g.search || q.lag > q.centre + g.search) continue;
+            q.c = q.e = 0;
         }
-        const i32 j = q.i;
-        q.i += fine ? 1 : 8;
-        if (j < q.centre - g.search || j > q.centre + g.search) continue;
+        const i32 j = q.lag;
         const i32 k_step = fine ? 2 : 8;
         const i32 offset = q.up ? j - q.centre + g.search + m - 1 : q.centre + g.search - j + m - 1;
-        i32 c = 0, e = 0;
-        for (i32 k = 0; k < m; k += k_step) {
+        i32 c = q.c, e = q.e, k = q.k;
+        const i32 stop = k + budget * k_step < m ? k + budget * k_step : m;
+        for (; k < stop; k += k_step) {
             const i32 u = ref[k], v = cand[offset - k];
             c += u * v;
             e += v * v;
+            --budget;
         }
-        budget -= m / k_step;
+        if (k < m) {
+            // Out of budget mid-lag: resume here next tick.
+            q.k = k;
+            q.c = c;
+            q.e = e;
+            break;
+        }
+        q.k = 0;
         if (c <= 0) continue;
         const i32 cr = c >> 14;
         const i32 score = cr * cr / ((e >> 14) + 1);
@@ -467,6 +479,61 @@ void half(Tank& k, const Lines& lines, u32 t, i32 v) {
     write<d2>(lines, t, y);
 }
 
+// The halo, in place of the octave: four resonant band-passes on the wet's
+// middle, a quarter of the range apart, moving together through 250 Hz ..
+// 6 kHz (up, or down), each fading in at one end and out at the other, so the
+// halo seems to rise (or fall) for ever. Zavalishin's state-variable filter
+// (trapezoidal), stable across the whole range at any Q.
+
+// A 65-point table at a Q32 position, interpolated.
+i32 across(const i32* table, u32 at) {
+    const u32 i = at >> 26, part = (at >> 16) & 1023;
+    return table[i] + ((table[i + 1] - table[i]) >> 10) * static_cast<i32>(part);
+}
+
+// Once a block: the bands' coefficients where they are, then on a block. The
+// halo recirculates without moving its energy out of band (as the octave
+// does), so its gain at a band's centre times what recirculates (`level`) is
+// held under 0.95: with Decay at full it still dies away.
+const i32 kHaloLoop = 255013683;  // 0.95, an eighth
+void halo_block(Halo& h, i32 fine, bool falling, i32 level) {
+    // Fine across its 33 points (Q31 in: 32 steps of 2^26), interpolated.
+    const u32 at = static_cast<u32>(fine) >> 26, part = (static_cast<u32>(fine) >> 16) & 1023;
+    const i32 damp = kHaloDamp[at] + ((kHaloDamp[at + 1] - kHaloDamp[at]) >> 10) * static_cast<i32>(part);
+    i32 gain = kHaloGain[at] + ((kHaloGain[at + 1] - kHaloGain[at]) >> 10) * static_cast<i32>(part);
+    const i32 peak = kHaloPeak[at] + ((kHaloPeak[at + 1] - kHaloPeak[at]) >> 10) * static_cast<i32>(part);
+    const i32 loop = multiply(peak, level);  // an eighth
+    if (loop > kHaloLoop) gain = multiply(gain, (kHaloLoop / (loop >> 15)) << 16);
+    for (u32 b = 0; b < 4; ++b) {
+        const u32 p = h.phase + b * 0x40000000u;
+        const i32 g = across(kHaloG, falling ? ~p : p);                   // Q30
+        const i32 sum = (1 << 29) + multiply(g, add(g, damp >> 1));       // 1 + g (g + 1/Q), Q29
+        const i32 a1 = (kMaximum / (sum >> 13)) << 16;                    // Q31
+        h.a1[b] = a1;
+        h.a2[b] = multiply(g, a1) * 2;
+        h.a3[b] = multiply(g, h.a2[b]) * 2;
+        h.gain[b] = multiply(gain, across(kHaloFade, p));
+    }
+    h.phase += static_cast<u32>(static_cast<i32>(kHaloStep[at]) + ((static_cast<i32>(kHaloStep[at + 1]) - static_cast<i32>(kHaloStep[at])) >> 10) * static_cast<i32>(part));
+}
+
+// A tick: the input at a 16th (the bands ring up to Q times it), the bands'
+// sum back out at 32 times (their gains held at a 32nd).
+i32 halo_tick(Halo& h, i32 x) {
+    const i32 in = x >> 4;
+    i32 out = 0;
+    for (u32 b = 0; b < 4; ++b) {
+        const i32 v3 = in - h.ic2[b];
+        const i32 v1 = add(multiply(h.a1[b], h.ic1[b]), multiply(h.a2[b], v3));
+        const i32 v2 = add(add(h.ic2[b], multiply(h.a2[b], h.ic1[b])), multiply(h.a3[b], v3));
+        h.ic1[b] = add(v1, v1) - h.ic1[b];
+        h.ic2[b] = add(v2, v2) - h.ic2[b];
+        out = add(out, multiply(v1, h.gain[b]));
+    }
+    for (u32 n = 0; n < 5; ++n) out = add(out, out);
+    return out;
+}
+
 void tick(Tank& k, const Lines& lines, i32 in, bool listen_up, bool listen_sub) {
     const u32 t = ++k.t;
     // The input, in mono (everything after it is: the tank takes a mono
@@ -481,7 +548,7 @@ void tick(Tank& k, const Lines& lines, i32 in, bool listen_up, bool listen_sub) 
     i32 sub = 0;
     if (listen_sub)
         sub = shift(k.shifter[1], 1, lines.line[kShiftLine + 1], t, add(add(sub_in, sub_in), add(sub_in, sub_in)), kSub, 2, 0, true,
-                    k.search);
+                    k.search[1]);
     else
         write<kShiftLine + 1>(lines, t, 0);
     sub = add(sub, -onepole(k.sub_high[0], sub, kSubHigh));
@@ -489,18 +556,24 @@ void tick(Tank& k, const Lines& lines, i32 in, bool listen_up, bool listen_sub) 
     // The up layer: one shifter on the wet's middle, fed back to both sides
     // (the tank spreads it again), band-limited to 250 Hz .. 6 kHz.
     i32 up = 0;
-    if (listen_up)
+    if (listen_up && k.halo_mode)
+        up = halo_tick(k.halo, add(k.wet[0] >> 1, k.wet[1] >> 1));
+    else if (listen_up)
         up = shift(k.shifter[0], 0, lines.line[kShiftLine], t, add(k.wet[0] >> 1, k.wet[1] >> 1),
-                   k.up_wide ? kUpWide : kUp, k.up_wide ? 1 : 0, 0, true, k.search);
+                   kUp, 0, 0, true, k.search[0]);
     else
         write<kShiftLine>(lines, t, add(k.wet[0] >> 1, k.wet[1] >> 1));
-    // The splice search in progress, a tick's worth.
-    if (k.search.owner && k.search.phase != kDone) {
-        const Geometry& g = k.search.geometry == 2 ? kSub : k.search.geometry == 1 ? kUpWide : kUp;
-        search_step(k.search, lines.line[kShiftLine + k.search.owner - 1], lines.scratch, g);
-    }
     up = onepole(k.up_low[0], up - onepole(k.up_high[0], up, kUpHigh), kUpLow);
-    const i32 up_scaled = multiply(up, k.up_gain);
+    i32 up_scaled = multiply(up, k.up_gain);
+    // The halo mostly goes straight out (at 1.25, matching the octave's
+    // level), a quarter of it back into the tank: fed back in full, it piles
+    // up whichever of the tank's resonances a band lingers on into one tone.
+    k.halo_direct = 0;
+    if (k.halo_mode) {
+        const i32 direct = multiply(up_scaled, k.swell);
+        k.halo_direct = add(direct, direct >> 2);
+        up_scaled >>= 2;
+    }
 
     // Swell: the shimmer comes in as the slow follower catches the fast one
     // after each note; Delay then holds it back before it reaches the tank.
@@ -512,29 +585,8 @@ void tick(Tank& k, const Lines& lines, i32 in, bool listen_up, bool listen_sub) 
     k.follow_slow = k.swell_rise ? add(k.follow_slow, multiply(k.follow_fast - k.follow_slow,
                                                                k.follow_fast > k.follow_slow ? k.swell_rise : kFollowFall))
                                  : k.follow_fast;
-    k.follow_vowel = add(k.follow_vowel, multiply(k.follow_fast - k.follow_vowel,
-                                                  k.follow_fast > k.follow_vowel ? kVowelRise : kFollowFall));
     k.swell = add(k.swell, (k.swell_target >> 8) - (k.swell >> 8));  // about 12 ms: no ripple per block
     i32 shimmer = multiply(add(up_scaled, sub), k.swell);
-    // A vowel on the shimmer: three resonators at Tone's formants (F1, F2 and a
-    // softer F3), blended in for a choral colour. Each runs on an eighth of the
-    // signal (its peak is Q times its input) and is weighed back to unity.
-    {
-        i32 voice = 0;
-        const i32 in = shimmer >> 3;
-        for (u32 j = 0; j < 2; ++j) {
-            k.formant_low[j] = add(k.formant_low[j], multiply(k.formant_f[j], k.formant_band[j]));
-            const i32 high = add(add(in, -k.formant_low[j]), -multiply(kFormantDamping, k.formant_band[j]));
-            k.formant_band[j] = add(k.formant_band[j], multiply(k.formant_f[j], high));
-            voice = add(voice, multiply(multiply(k.formant_band[j], kFormantDamping), kFormantWeight[j]));
-        }
-        voice = add(add(add(voice, voice), add(voice, voice)), add(add(voice, voice), add(voice, voice)));  // x 8
-        // Below the formants the voice is the shimmer itself, so the sub keeps
-        // its body: the vowel colours only the mids and up.
-        voice = add(voice, onepole(k.vowel_low, shimmer, kVowelLow));
-        k.vowel_mix = add(k.vowel_mix, (k.vowel_target >> 8) - (k.vowel_mix >> 8));
-        shimmer = add(shimmer, multiply(add(voice, -shimmer), k.vowel_mix));
-    }
     // Character: the shimmer brought to one level (kDriveLevel), driven into a
     // soft, slightly lopsided curve (the tank's warm, plus a little second
     // harmonic, as a valve stage), then returned to its own level. The same
@@ -580,7 +632,7 @@ void tick(Tank& k, const Lines& lines, i32 in, bool listen_up, bool listen_sub) 
     k.wet[0] = out[0];
     k.wet[1] = out[1];
     {
-        const i32 mid = add(out[0] >> 1, out[1] >> 1), side = multiply(add(out[0] >> 1, -(out[1] >> 1)), k.width);
+        const i32 mid = add(add(out[0] >> 1, out[1] >> 1), k.halo_direct), side = multiply(add(out[0] >> 1, -(out[1] >> 1)), k.width);
         k.heard[0] = multiply(add(mid, side), k.pan_left);
         k.heard[1] = multiply(add(mid, -side), k.pan_right);
     }
@@ -616,7 +668,6 @@ void setup(Tank& k) {
     k.width = -1;  // none yet: the first block takes the control as it is
     k.pan = -1;
     k.swell = k.swell_target = kMaximum;
-    k.vowel_mix = k.vowel_target = kFormantMix;
     k.rate = 65536;
     k.shifter[0].age[0] = k.shifter[0].age[1] = (kUp.low + kUp.centre[0]) << 16;
     k.shifter[1].age[0] = k.shifter[1].age[1] = (kSub.low + kSub.centre[0] / 2) << 16;
@@ -636,10 +687,6 @@ void controls(Tank& k, opxy::Parameters p) {
     const i32 target_tone = at_index >= 32 ? kToneCoefficient[32]
                                            : kToneCoefficient[at_index] + ((kToneCoefficient[at_index + 1] - kToneCoefficient[at_index]) >> 10) * static_cast<i32>(part);
     k.tone = target_tone;
-    // The vowel follows Tone along the same 33 points.
-    for (u32 j = 0; j < 3; ++j)
-        k.formant_f[j] = at_index >= 32 ? kFormant[32][j]
-                                        : kFormant[at_index][j] + ((kFormant[at_index + 1][j] - kFormant[at_index][j]) >> 10) * static_cast<i32>(part);
     // Mod: up to 10 ms (220 samples) of drift, Q16, on a squared curve so its
     // first half covers the gentle range; the LFOs speed up to 2.5 times as fast.
     const i32 mod = control(p[kMod]);
@@ -677,28 +724,23 @@ void controls(Tank& k, opxy::Parameters p) {
         const i32 linear = ratio >= 32768 ? kMaximum : ratio << 16;
         k.swell_target = multiply(linear, linear);  // squared: a quieter start, a longer rise
     }
-    // The vowel's attack: the gap between the level and its slow follower.
-    if (k.follow_fast < (1 << 16)) {
-        k.vowel_target = kFormantMix;
-    } else {
-        const i32 ratio = ((k.follow_vowel >> 16) << 15) / ((k.follow_fast >> 16) + 1);  // Q15
-        const i32 gap = ratio >= 32768 ? 0 : (32768 - ratio) << 16;                       // Q31, 0..1
-        k.vowel_target = add(kFormantMix, multiply(gap, kFormantAccent));
-    }
     // The drive's gains: into the curve at kDriveLevel, and back out.
     {
         const i32 level = k.shimmer_level > 4096 ? k.shimmer_level : 4096;
         k.drive_in = scale_of(kDriveLevel, level);
         k.drive_out = scale_of(multiply(level, kDriveMakeUp), kDriveLevel >> 1);
     }
-    const u32 sub = choice(p[kSubInterval], 3), up = choice(p[kUpInterval], 3);
-    k.up_wide = up == 2;
-    // Rounded, so the centre is exactly 0 cents.
-    const i32 cents = ((static_cast<i32>(static_cast<u32>(control(p[kFine])) >> 16) - 16384) * 25 + 8192) >> 14;
-    const i32 key = static_cast<i32>(sub * 3 + up) * 256 + cents + 128;
+    const u32 sub = choice(p[kSubInterval], 3);
+    k.halo_mode = static_cast<i32>(choice(p[kUpInterval], 3));
+    // Fine: with the octave, it stretches the intervals (rounded, so the centre
+    // is exactly 0 cents); with a halo, it sets the halo's character and the
+    // sub stays exact.
+    const i32 fine = control(p[kFine]);
+    const i32 cents = k.halo_mode ? 0 : ((static_cast<i32>(static_cast<u32>(fine) >> 16) - 16384) * 25 + 8192) >> 14;
+    const i32 key = static_cast<i32>(sub) * 256 + cents + 128;
     if (key != k.pitch_key) {
         k.pitch_key = key;
-        k.shifter[0].step = 65536 - ratio_for(((kUpSemitones[up] * 100 + cents) * 65536) / 1200);
+        k.shifter[0].step = 65536 - ratio_for(((1200 + cents) * 65536) / 1200);
         k.shifter[1].step = 65536 - ratio_for(((kSubSemitones[sub] * 100 - cents) * 65536) / 1200);
     }
 }
@@ -729,9 +771,9 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
         setup(stored);
         state.ready = 1;
     }
-    // The tank's state is worked on in a local copy, which the compiler
-    // addresses more cheaply than the buffer, then stored.
-    Tank k = stored;
+    // The tank's state, worked on where it lives (copying it in and out
+    // each block costs more than it saves).
+    Tank& k = stored;
     Lines lines;
     for (u32 n = 0; n < kLines; ++n) lines.line[n] = Line{buffer.words + kLineOffset[n], kLineMask[n]};
     lines.scratch = buffer.words + kScratch;
@@ -748,8 +790,9 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
     // here (up to 0.75) and applied x4.
     const i32 sub_share = multiply(amount, kMaximum - light);
     const i32 sub_target = multiply(add(sub_share, multiply(multiply(sub_share, sub_share), sub_share)), 0x30000000);
-    const i32 up_target = multiply(multiply(amount, light), 0x4ccccccd);              // up to 0.6
+    const i32 up_target = multiply(multiply(amount, light), 921708850);               // up to 0.43
     const bool listen_up = up_target > 0 || k.up_gain > 0;
+    if (k.halo_mode) halo_block(k.halo, control(parameters[kFine]), k.halo_mode == 2, up_target >> 2);  // a quarter recirculates
     const bool listen_sub = sub_target > 0 || k.sub_gain > 0;
 
     // Frames in pairs (a block is a whole number of them): each pair's first
@@ -766,6 +809,12 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
         k.up_gain = glide(k.up_gain, up_target);
         if ((k.t & (kModTicks - 1)) == 0) modulate(k);
         tick(k, lines, in, listen_up, listen_sub);
+        // The splice searches in progress, a tick's worth each (here, between
+        // ticks, where little else is held in registers).
+        if (k.search[0].owner && k.search[0].phase != kDone)
+            search_step(k.search[0], lines.line[kShiftLine], lines.scratch, kUp);
+        if (k.search[1].owner && k.search[1].phase != kDone)
+            search_step(k.search[1], lines.line[kShiftLine + 1], lines.scratch + kSubScratch, kSub);
         for (i32 ch = 0; ch < 2; ++ch) {
             k.held[ch][0] = k.held[ch][1];
             k.held[ch][1] = k.heard[ch];
@@ -773,6 +822,5 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
         left[i + 1] = k.held[0][1];
         right[i + 1] = k.held[1][1];
     }
-    stored = k;
 }
 }

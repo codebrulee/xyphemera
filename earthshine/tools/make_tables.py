@@ -66,9 +66,10 @@ offsets, at = [], TANK_WORDS
 for _, n in lines:
     offsets.append(at)
     at += n
-# The shifters' search scratch: the sub shifter's 441-sample match plus its
-# 2 x 331 + 441 lags.
-SCRATCH = 2 * 441 + 2 * 331
+# The shifters' search scratch, one area each (their searches run together):
+# a match plus its 2 x search + match lags. Up first (220, 265), then sub (441, 331).
+UP_SCRATCH = 2 * 220 + 2 * 265
+SCRATCH = UP_SCRATCH + 2 * 441 + 2 * 331
 scratch_at = at
 total = at + SCRATCH
 assert total * 4 <= 524288, total
@@ -92,6 +93,7 @@ w('using opxy::u32;')
 w(f'const u32 kWords = {total};  // buffer words used, scratch included')
 w(f'const u32 kScratch = {scratch_at};  // the search scratch\'s first word')
 w(f'const u32 kScratchWords = {SCRATCH};')
+w(f'const u32 kSubScratch = {UP_SCRATCH};  // the sub\'s area, from kScratch')
 w(f'const u32 kTankWords = {TANK_WORDS};')
 w(f'const u32 kModMax = {MOD_MAX};')
 w(f'// Input diffusion: {len(IN_AP)} all-passes on the mono input, half-rate samples.')
@@ -124,25 +126,44 @@ w(f'const i32 kUpHigh = {onepole(250, R)};       // up path high-pass 250 Hz')
 w(f'const i32 kUpLow = {onepole(6000, R)};       // up path low-pass 6 kHz')
 w(f'const i32 kSubHigh = {onepole(25, R)};       // sub path high-pass 25 Hz')
 w(f'const i32 kSubLow = {onepole(2500, R)};      // sub path low-pass 2.5 kHz')
-# Formants over Tone (33 points): a vowel from "oo" (dark) through "oh" to "ah"
-# (the middle) and "eh" (bright), as the state-variable filters' f = 2 sin(pi fc / R), Q31.
-VOWELS = ((0.0, (325, 700, 2530)), (0.25, (450, 800, 2830)), (0.5, (730, 1090, 2440)), (1.0, (530, 1840, 2480)))
-def vowel_at(x):
-    for (x0, a), (x1, b) in zip(VOWELS, VOWELS[1:]):
-        if x <= x1:
-            u = (x - x0) / (x1 - x0)
-            return [a[i] * (b[i] / a[i]) ** u for i in range(3)]
-    return list(VOWELS[-1][1])
-formants = [[q31(2 * math.sin(math.pi * hz / R)) for hz in vowel_at(i / 32)] for i in range(33)]
-w('// Formants over Tone: "oo" .. "oh" .. "ah" (middle) .. "eh", f = 2 sin(pi fc / R) for F1..F3, Q31.')
-w('const i32 kFormant[33][3] = {' + ', '.join('{' + ', '.join(map(str, r)) + '}' for r in formants) + '};')
 w('// Delay: the shimmer\'s own delay, half-rate samples. Swell: the slow follower\'s rise, Q31 a tick (0: off).')
 w('const u32 kShimmerDelay[4] = {' + ', '.join(str(int(ms * 0.001 * R)) for ms in (0, 100, 250, 500)) + '};')
 w('const i32 kSwellRise[4] = {0, ' + ', '.join(str(onepole(1 / (2 * math.pi * s / 1.75), R)) for s in (0.5, 1.0, 2.0)) + '};  // the shimmer at 90% in about 0.5, 1, 2 s (measured)')
 w(f'const i32 kFollowFast = {onepole(1 / (2 * math.pi * 0.025), R)};   // the level, smoothed over 25 ms')
-w(f'const i32 kVowelLow = {onepole(250, R)};   // the vowel passes the shimmer below 250 Hz')
-w(f'const i32 kVowelRise = {onepole(1 / (2 * math.pi * 0.3 / 3), R)};   // the vowel attack\'s follower: about 0.3 s up')
-w(f'const i32 kFollowFall = {onepole(1 / (2 * math.pi * 0.1), R)};    // both fall in about 100 ms')
+w(f'const i32 kFollowFall = {onepole(1 / (2 * math.pi * 0.1), R)};    // the swell follower falls in about 100 ms')
+# The halo (Up's rise and fall): four resonant band-passes, a quarter of the
+# range apart, moving together through 250 Hz .. 6 kHz, each fading in at one
+# end and out at the other. Over the range (65 points): the state-variable
+# filter's g = tan(pi fc / R), Q30, and the fade, sin^2, Q31.
+HALO_LO, HALO_HI = 250.0, 6000.0
+halo_g = [int(round(math.tan(math.pi * HALO_LO * (HALO_HI / HALO_LO) ** (i / 64) / R) * 2**30)) for i in range(65)]
+halo_w = [q31(math.sin(math.pi * i / 64) ** 2) for i in range(65)]
+w('// The halo: g = tan(pi fc / R) over its range (250 Hz .. 6 kHz, 65 points), Q30; each band\'s fade, Q31.')
+w('const i32 kHaloG[65] = {' + ', '.join(map(str, halo_g)) + '};')
+w('const i32 kHaloFade[65] = {' + ', '.join(map(str, halo_w)) + '};')
+# Its character over Fine (33 points): fast and soft (5 s through the range,
+# Q 2) through 12 s, Q 4 to slow and glassy (30 s, Q 8). Each: the phase step a
+# block (2^32 a sweep), 1/Q (Q31), and the gain out (2 x make-up / Q, x 16 for
+# the input's headroom, held at a 32nd, Q31). Make-up matched to the octave's
+# level at Q 2, 4 and 8 (a curve through the three, over log2 Q).
+BLOCKS_PER_S = 44100.0 / 64
+halo_step, halo_damp, halo_gain, halo_peak = [], [], [], []
+for i in range(33):
+    x = i / 32
+    period = 12.0 * 2.5 ** (2 * x - 1)
+    Q = 4.0 * 2.0 ** (2 * x - 1)
+    L = math.log2(Q / 4)
+    makeup = 10 ** ((5.75 + 3.55 * L - 0.93 * L * L) / 20)
+    halo_step.append(int(round(2**32 / (period * BLOCKS_PER_S))))
+    halo_damp.append(q31(1 / Q))
+    halo_gain.append(q31(2 * makeup / Q * 16 / 32))
+    halo_peak.append(q31(2 * makeup / 8))
+w('// The halo\'s character over Fine: phase step a block, 1/Q (Q31), gain out / 32 (Q31).')
+w('const u32 kHaloStep[33] = {' + ', '.join(f'{v}u' for v in halo_step) + '};')
+w('const i32 kHaloDamp[33] = {' + ', '.join(map(str, halo_damp)) + '};')
+w('const i32 kHaloGain[33] = {' + ', '.join(map(str, halo_gain)) + '};')
+w('// Its gain at a band\'s centre (2 x make-up), an eighth, Q31: the loop\'s gain is held below one.')
+w('const i32 kHaloPeak[33] = {' + ', '.join(map(str, halo_peak)) + '};')
 w('}')
 w('}')
 with open('tables.h', 'w') as f:

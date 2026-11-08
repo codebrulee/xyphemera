@@ -62,7 +62,7 @@
     {
       "id": "mod",
       "label": "Mod",
-      "default": 0,
+      "default": 0.2,
       "mapping": {
         "kind": "linear",
         "minimum": 0,
@@ -147,15 +147,15 @@
         "kind": "enum",
         "labels": [
           "+12",
-          "+7",
-          "+19"
+          "rise",
+          "fall"
         ]
       }
     }
   ],
   "presets": {},
   "resources": {
-    "bufferBytes": 290848,
+    "bufferBytes": 294728,
     "display": {
       "stateBytes": 60,
       "stateAlignment": 4,

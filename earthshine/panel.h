@@ -16,9 +16,9 @@ const opxy::i32 kMoonTenths = 2100, kSunTenths = -300, kSunIconTenths = -430;
 // The intervals' labels: their centres, and each choice's width, Q10.
 const opxy::i32 kSubX = 185848, kUpX = 305672, kLabelY = 205373;
 const char* const kSub[3] = {"-12", "-24", "-7"};
-const char* const kUp[3] = {"+12", "+7", "+19"};
+const char* const kUp[3] = {"+12", "rise", "fall"};
 const opxy::i32 kSubWidth[3] = {14848, 14848, 9114};
-const opxy::i32 kUpWidth[3] = {17408, 11674, 17408};
+const opxy::i32 kUpWidth[3] = {17408, 15770, 12800};
 // Decay in tenths of a second and Tone in hertz across their controls, as the effect's.
 const opxy::i32 kDecayTenths[33] = {10240, 11245, 12349, 13560, 14891, 16353, 17957, 19720, 21655, 23780, 26114, 28677, 31491, 34581, 37975, 41702, 45795, 50289, 55224, 60644, 66595, 73131, 80308, 88189, 96844, 106348, 116785, 128246, 140832, 154653, 169830, 186497, 204800};
 const opxy::i32 kToneHz[33] = {700, 758, 821, 889, 963, 1043, 1130, 1224, 1326, 1436, 1555, 1684, 1824, 1976, 2140, 2317, 2510, 2719, 2944, 3189, 3454, 3741, 4052, 4388, 4753, 5148, 5575, 6039, 6540, 7084, 7672, 8310, 9000};
