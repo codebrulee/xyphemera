@@ -296,8 +296,9 @@ int main() {
 
     // Mod glides the reads: a steady tone gains no buzz at the block rate
     // (44,100 / 64 Hz) however hard Mod drifts the lines. The drift itself
-    // spreads the tone a little, so the block-rate bands are compared with
-    // bands beside them; a jump at each block stands about 13 dB above them.
+    // spreads the tone (out to about 850 Hz at full), so the block-rate bands
+    // are compared with their neighbours 100 Hz either side; a jump at each
+    // block would stand out as a peak.
     {
         Settings s;
         s.shimmer = 0;
@@ -310,7 +311,8 @@ int main() {
             for (int side = -1; side <= 1; side += 2)
                 for (double d = -2; d <= 2; d += 0.5) {
                     buzz += power(out, 3000 + side * 689.0625 * k + d, 2, 6);
-                    beside += power(out, 3000 + side * (689.0625 * k + 250) + d, 2, 6);
+                    beside += (power(out, 3000 + side * (689.0625 * k - 100) + d, 2, 6) +
+                               power(out, 3000 + side * (689.0625 * k + 100) + d, 2, 6)) / 2;
                 }
         const double above = 10 * std::log10((buzz + 1e-30) / (beside + 1e-30));
         if (above > 6) std::printf("  block-rate bands %.1f dB above the bands beside them\n", above);

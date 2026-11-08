@@ -6,9 +6,9 @@
 // climbs above them. Light balances the two, from moon (all sub) to sun (all
 // up); Shimmer sets how much of either there is.
 //
-//   in ─► predelay ─┬──────────────────────────────► (+) ─► diffuser ─► FDN ─► out
-//                   └► sub shifter ► band ─► sub gain ─┤  (4 all-passes  (4 lines,
-//   out ─► up shifter ► band ─► up gain ───────────────┘     per side)    modulated)
+//   in ─► predelay ─┬──────────────────────────────► (+) ─► diffuser ─► figure-eight ─► out
+//                   └► sub shifter ► band ─► sub gain ─┤  (4 all-passes,  (two halves,
+//   out ─► up shifter ► band ─► up gain ───────────────┘       mono)      Mod drifts each)
 //
 // The tank runs at half rate (22,050 Hz): it is dark by design, and that halves
 // its cost and memory. The shifters splice where the waveforms match
@@ -47,7 +47,8 @@ const i32 kFormantMix = 1288490188;  // 0.6
 // More vowel as each note starts, easing back as a slow follower (0.3 s)
 // catches the level: up to this much on top of kFormantMix.
 const i32 kFormantAccent = 644245094;  // 0.3
-const i32 kAllpassGain[4] = {1610612736, 1610612736, 1342177280, 1342177280};  // 0.75, 0.75, 0.625, 0.625
+const i32 kDiffuse1 = 1503238554;  // 0.7: the loop's first diffusers (as -0.7)
+const i32 kAllpassGain[kAllpasses] = {1610612736, 1610612736, 1342177280};  // 0.75, 0.75, 0.625
 
 i32 control(i32 word) { return word < 0 ? 0 : word; }
 u32 choice(i32 word, u32 count) {
@@ -157,15 +158,13 @@ Scale scale_of(i32 num, i32 den) {
 
 struct Tank {
     u32 t;                       // half-rate sample count: every line's write position
-    i32 odd;                     // decimation phase
-    i32 down[2];                 // decimation one-pole, per side
+    i32 down;                    // decimation one-pole, on the input's mono
     i32 held[2][2];              // the last two half-rate wet samples, per side
-    i32 smooth[2];               // interpolation one-pole, per side
-    i32 damp[4], gain[4];
+    i32 damp[2], gain[2];        // per half of the figure-eight
     i32 dc[2];                   // DC blocks on what enters the tank
-    u32 lfo[4];
-    i32 offset[4];               // the modulated read ages, Q16, gliding each tick
-    i32 slide[4];                // per tick, toward the end of the block's
+    u32 lfo[2];
+    i32 offset[2];               // the modulated read ages, Q16, gliding each tick
+    i32 slide[2];                // per tick, toward the end of the block's
     i32 still;                   // Mod off and every line at its length: plain reads
     i32 decay_word, tone;
     i32 formant_f[3];            // the vowel's F1..F3 for this block (kFormant), Q31
@@ -346,7 +345,7 @@ void search_step(Search& q, const Line& l, i32* scratch, const Geometry& g) {
 // One shifter sample: write x, read the playing tap (and the fading one).
 // Without `listen`, it keeps its taps in range but skips reads and searches.
 // Its search starts `early` samples before its tap runs out (Search).
-i32 shift(Shifter& s, i32 who, const Line& l, u32 t, i32 x, const Geometry& g, i32 geometry, i32 side, bool listen,
+inline __attribute__((always_inline)) i32 shift(Shifter& s, i32 who, const Line& l, u32 t, i32 x, const Geometry& g, i32 geometry, i32 side, bool listen,
           Search& q) {
     l.words[t & l.mask] = x;
     s.age[0] += s.step;
@@ -389,11 +388,6 @@ i32 shift(Shifter& s, i32 who, const Line& l, u32 t, i32 x, const Geometry& g, i
     return out;
 }
 
-void householder(i32* x) {
-    i32 sum = 0;
-    for (u32 i = 0; i < 4; ++i) sum = add(sum, x[i] >> 1);  // 2/4 of the sum
-    for (u32 i = 0; i < 4; ++i) x[i] = add(x[i], -sum);
-}
 
 i32 glide(i32 value, i32 target) {
     const i32 step = (target >> 6) - (value >> 6);
@@ -401,26 +395,105 @@ i32 glide(i32 value, i32 target) {
 }
 
 // One half-rate sample through the tank.
-void tick(Tank& k, const Lines& lines, i32 in_left, i32 in_right, bool listen_up, bool listen_sub) {
-    const u32 t = ++k.t;
-    const i32 in[2] = {in_left, in_right};
-    i32 delayed[2];
-    for (i32 ch = 0; ch < 2; ++ch) {
-        const Line& pre = lines.line[kPreLine + ch];
-        pre.words[t & pre.mask] = in[ch];
-        delayed[ch] = at(pre, t, 441);  // 20 ms
+// Reads and writes on line N, a constant: its mask folds into the code, so
+// only its words pointer is loaded.
+template <u32 N>
+i32 read(const Lines& lines, u32 t, u32 age) { return lines.line[N].words[(t - age) & kLineMask[N]]; }
+template <u32 N>
+void write(const Lines& lines, u32 t, i32 v) { lines.line[N].words[t & kLineMask[N]] = v; }
+
+// The output taps, unrolled at compile time so each one's line, age and sign
+// are constants: a read and an add, where a loop looked each up every tick.
+template <u32 N>
+struct Taps {
+    static i32 left(const Lines& lines, u32 t) {
+        const i32 v = read<kTankLine + kTapsLeft[N - 1][0]>(lines, t, kTapsLeft[N - 1][1]) >> 2;
+        return add(Taps<N - 1>::left(lines, t), kTapsLeft[N - 1][2] > 0 ? v : -v);
     }
+    static i32 right(const Lines& lines, u32 t) {
+        const i32 v = read<kTankLine + kTapsRight[N - 1][0]>(lines, t, kTapsRight[N - 1][1]) >> 2;
+        return add(Taps<N - 1>::right(lines, t), kTapsRight[N - 1][2] > 0 ? v : -v);
+    }
+};
+template <>
+struct Taps<0> {
+    static i32 left(const Lines&, u32) { return 0; }
+    static i32 right(const Lines&, u32) { return 0; }
+};
+
+// The input all-passes, unrolled at compile time like the taps.
+template <u32 N>
+struct Diffuse {
+    static i32 run(const Lines& lines, u32 t, i32 x) {
+        x = Diffuse<N - 1>::run(lines, t, x);
+        const i32 g = kAllpassGain[N - 1];
+        const i32 d = read<kAllpassLine + N - 1>(lines, t, kAllpassLen[N - 1]);
+        const i32 w = add(x, -multiply(d, g));
+        write<kAllpassLine + N - 1>(lines, t, w);
+        return add(d, multiply(w, g));
+    }
+};
+template <>
+struct Diffuse<0> {
+    static i32 run(const Lines&, u32, i32 x) { return x; }
+};
+
+// One half of the figure-eight, its lines and lengths constants: v is the
+// input plus the other half's end.
+template <u32 H>
+void half(Tank& k, const Lines& lines, u32 t, i32 v) {
+    const u32 ap1 = kTankLine + H * 4, d1 = ap1 + 1, ap2 = ap1 + 2, d2 = ap1 + 3;
+    {
+        const i32 d = read<ap1>(lines, t, kAp1[H]);
+        const i32 w = add(v, multiply(d, kDiffuse1));  // gain -0.7
+        write<ap1>(lines, t, w);
+        v = add(d, -multiply(w, kDiffuse1));
+    }
+    write<d1>(lines, t, warm(v));
+    i32 y;
+    if (k.still) {
+        y = read<d1>(lines, t, kD1[H]);
+    } else {
+        const i32 age = k.offset[H] += k.slide[H];
+        y = linear(lines.line[d1], t, age);
+    }
+    y = multiply(onepole(k.damp[H], y, k.tone), k.gain[H]);
+    {
+        const i32 d = read<ap2>(lines, t, kAp2[H]);
+        const i32 w = add(y, -(d >> 1));  // gain 0.5
+        write<ap2>(lines, t, w);
+        y = add(d, w >> 1);
+    }
+    write<d2>(lines, t, y);
+}
+
+void tick(Tank& k, const Lines& lines, i32 in, bool listen_up, bool listen_sub) {
+    const u32 t = ++k.t;
+    // The input, in mono (everything after it is: the tank takes a mono
+    // input and makes its stereo from its taps), 20 ms late.
+    write<kPreLine>(lines, t, in);
+    const i32 mono = read<kPreLine>(lines, t, 441);
     // The sub: one shifter on both sides together (it is low enough to be
     // mono), band-limited to 25 Hz .. 2.5 kHz.
-    const i32 sub_in = multiply(add(delayed[0] >> 1, delayed[1] >> 1), k.sub_gain);
-    i32 sub = shift(k.shifter[1], 1, lines.line[kShiftLine + 1], t, add(add(sub_in, sub_in), add(sub_in, sub_in)), kSub, 2, 0, listen_sub,
+    const i32 sub_in = multiply(mono, k.sub_gain);
+    // A layer at nothing (Light at its far end) skips its shifter, only
+    // keeping its line written for when it returns.
+    i32 sub = 0;
+    if (listen_sub)
+        sub = shift(k.shifter[1], 1, lines.line[kShiftLine + 1], t, add(add(sub_in, sub_in), add(sub_in, sub_in)), kSub, 2, 0, true,
                     k.search);
+    else
+        write<kShiftLine + 1>(lines, t, 0);
     sub = add(sub, -onepole(k.sub_high[0], sub, kSubHigh));
     sub = onepole(k.sub_low[0][1], onepole(k.sub_low[0][0], sub, kSubLow), kSubLow);
     // The up layer: one shifter on the wet's middle, fed back to both sides
     // (the tank spreads it again), band-limited to 250 Hz .. 6 kHz.
-    i32 up = shift(k.shifter[0], 0, lines.line[kShiftLine], t, add(k.wet[0] >> 1, k.wet[1] >> 1),
-                   k.up_wide ? kUpWide : kUp, k.up_wide ? 1 : 0, 0, listen_up, k.search);
+    i32 up = 0;
+    if (listen_up)
+        up = shift(k.shifter[0], 0, lines.line[kShiftLine], t, add(k.wet[0] >> 1, k.wet[1] >> 1),
+                   k.up_wide ? kUpWide : kUp, k.up_wide ? 1 : 0, 0, true, k.search);
+    else
+        write<kShiftLine>(lines, t, add(k.wet[0] >> 1, k.wet[1] >> 1));
     // The splice search in progress, a tick's worth.
     if (k.search.owner && k.search.phase != kDone) {
         const Geometry& g = k.search.geometry == 2 ? kSub : k.search.geometry == 1 ? kUpWide : kUp;
@@ -431,7 +504,6 @@ void tick(Tank& k, const Lines& lines, i32 in_left, i32 in_right, bool listen_up
 
     // Swell: the shimmer comes in as the slow follower catches the fast one
     // after each note; Delay then holds it back before it reaches the tank.
-    const i32 mono = add(delayed[0] >> 1, delayed[1] >> 1);
     const i32 level = mono < 0 ? -(mono + 1) : mono;
     // The level, smoothed over about 10 ms (so the followers see the note, not
     // each cycle); the slow follower rises to it over Swell's time and falls
@@ -491,60 +563,20 @@ void tick(Tank& k, const Lines& lines, i32 in_left, i32 in_right, bool listen_up
         const i32 age = static_cast<i32>((k.shimmer_delay + 2) << 16) + k.drift;
         shimmer = linear(l, t, age);
     }
-    i32 inject[2];
-    for (i32 ch = 0; ch < 2; ++ch) inject[ch] = add(delayed[ch], shimmer);
 
-    // Spread the two sides over eight channels, then diffuse.
-    for (i32 ch = 0; ch < 2; ++ch) {
-        i32 v = add(inject[ch], -onepole(k.dc[ch], inject[ch], kDcBlock));
-        for (u32 s = 1; s < 4; ++s) {
-            const Line& l = lines.line[kAllpassLine + ch * 4 + s];
-            const i32 g = kAllpassGain[s];
-            const i32 d = at(l, t, kAllpassLen[ch][s]);
-            const i32 w = add(v, -multiply(d, g));
-            l.words[t & l.mask] = w;
-            v = add(d, multiply(w, g));
-        }
-        inject[ch] = v;
-    }
-    // The FDN, four lines, each read between two samples with its own slow drift.
-    i32 y[4], f[4];
-    if (k.still) {
-        // Mod off and settled: each line read at its length, no interpolation.
-        for (u32 c = 0; c < 4; ++c) {
-            const Line& l = lines.line[kFdnLine + c];
-            y[c] = f[c] = l.words[(t - kFdnLen[c]) & l.mask];
-        }
-    } else {
-        for (u32 c = 0; c < 4; ++c) {
-            const Line& l = lines.line[kFdnLine + c];
-            const i32 age = k.offset[c] += k.slide[c];
-            const u32 at_age = t - (static_cast<u32>(age) >> 16);
-            const i32 a0 = l.words[at_age & l.mask] >> 1, a1 = l.words[(at_age - 1) & l.mask] >> 1;
-            y[c] = f[c] = add(a0, multiply(a1 - a0, (age & 0xffff) << 15)) * 2;
-        }
-    }
-    householder(f);
-    // Back in: each line's damped, scaled, warmed signal, plus the diffused input
-    // (left into 0 and 2, right into 1 and 3, the second pair inverted).
-    const i32 in_half[2] = {inject[0] >> 1, inject[1] >> 1};
-    for (u32 c = 0; c < 4; ++c) {
-        const i32 v = multiply(onepole(k.damp[c], f[c], k.tone), k.gain[c]);
-        const Line& l = lines.line[kFdnLine + c];
-        l.words[t & l.mask] = add(warm(v), (c & 2) ? -in_half[c & 1] : in_half[c & 1]);
-    }
-    // Out: each line's end plus three taps along it, signs alternating so the
-    // sides decorrelate; left from lines 0 and 2, right from 1 and 3; then
-    // +2.5 dB, the level the longer lines spread thinner.
-    i32 out[2] = {0, 0};
-    for (u32 c = 0; c < 4; ++c) {
-        const Line& l = lines.line[kFdnLine + c];
-        i32 sum = y[c] >> 1;
-        sum = add(sum, l.words[(t - kTap[c][0]) & l.mask] >> 1);
-        sum = add(sum, -(l.words[(t - kTap[c][1]) & l.mask] >> 1));
-        out[c & 1] = add(out[c & 1], (c & 2) ? -sum : sum);
-    }
-    for (u32 ch = 0; ch < 2; ++ch) out[ch] = add(out[ch], multiply(out[ch], 718916480));  // x 1.335
+    // The figure-eight (Dattorro's plate, Griesinger's topology): the input,
+    // in mono, through three all-passes, then into both halves of one loop.
+    // Each half: a decay diffuser (-0.7), a delay Mod drifts, damping and the
+    // decay's gain, a second diffuser (0.5), a delay; its end feeds the other.
+    i32 x = add(mono, shimmer);
+    x = add(x, -onepole(k.dc[0], x, kDcBlock));
+    x = Diffuse<kAllpasses>::run(lines, t, x);
+    const i32 ends[2] = {read<kTankLine + 3>(lines, t, kD2[0]), read<kTankLine + 7>(lines, t, kD2[1])};
+    half<0>(k, lines, t, add(x, ends[1]));
+    half<1>(k, lines, t, add(x, ends[0]));
+    // Out: Dattorro's taps, five a side, mostly from the other half.
+    i32 out[2] = {Taps<kTaps>::left(lines, t), Taps<kTaps>::right(lines, t)};
+    for (u32 ch = 0; ch < 2; ++ch) out[ch] = add(add(out[ch], out[ch]), multiply(out[ch], 347892350));  // x 2.16
     k.wet[0] = out[0];
     k.wet[1] = out[1];
     {
@@ -555,32 +587,32 @@ void tick(Tank& k, const Lines& lines, i32 in_left, i32 in_right, bool listen_up
 }
 
 
-// Every kModTicks ticks (a quarter block): the step that glides each FDN line's
-// read age, a tick at a time, to its length plus a slow parabolic-sine drift
+// Every kModTicks ticks (a quarter block): the step that glides each half's
+// modulated read age, a tick at a time, to its length plus a slow parabolic-sine drift
 // of 0..depth by the segment's end. Steering it this often keeps the bends in
 // its path too small to hear as a buzz.
 const u32 kModTicks = 8;
 void modulate(Tank& k) {
-    for (u32 c = 0; c < 4; ++c) {
+    for (u32 c = 0; c < 2; ++c) {
         const i32 phase = static_cast<i32>(k.lfo[c]);
         const i32 magnitude = phase < 0 ? -(phase + 1) : phase;
         const i32 wave = multiply(phase, kMaximum - magnitude) * 4;  // -1..1
         k.lfo[c] += ((kLfoStep[c] * kModTicks) >> 8) * static_cast<u32>(k.rate >> 8);
-        const i32 target = static_cast<i32>(kFdnLen[c] << 16) + multiply(k.depth, (wave >> 1) + 0x40000000);
+        const i32 target = static_cast<i32>(kD1[c] << 16) + multiply(k.depth, (wave >> 1) + 0x40000000);
         k.slide[c] = (target - k.offset[c]) / static_cast<i32>(kModTicks);
     }
     // Still once Mod is off and every line has glided back to its length.
     k.still = !k.depth;
-    for (u32 c = 0; c < 4; ++c)
-        if (k.slide[c] || k.offset[c] != static_cast<i32>(kFdnLen[c] << 16)) k.still = 0;
+    for (u32 c = 0; c < 2; ++c)
+        if (k.slide[c] || k.offset[c] != static_cast<i32>(kD1[c] << 16)) k.still = 0;
 }
 
 void setup(Tank& k) {
     k = Tank();
-    for (u32 c = 0; c < 4; ++c) k.lfo[c] = kLfoPhase[c];
+    for (u32 c = 0; c < 2; ++c) k.lfo[c] = kLfoPhase[c];
     k.decay_word = -1;
     k.pitch_key = -1;
-    for (u32 c = 0; c < 4; ++c) k.offset[c] = static_cast<i32>(kFdnLen[c] << 16);
+    for (u32 c = 0; c < 2; ++c) k.offset[c] = static_cast<i32>(kD1[c] << 16);
     k.width = -1;  // none yet: the first block takes the control as it is
     k.pan = -1;
     k.swell = k.swell_target = kMaximum;
@@ -596,7 +628,7 @@ void controls(Tank& k, opxy::Parameters p) {
     if (p[kDecay] != k.decay_word) {
         k.decay_word = p[kDecay];
         const i32 per_second = gain_for(multiply(control(p[kDecay]), 283234));  // 2^(-v log2 20), Q31
-        for (u32 c = 0; c < 4; ++c) k.gain[c] = gain_for(multiply(kDecayK[c], per_second));
+        for (u32 c = 0; c < 2; ++c) k.gain[c] = gain_for(multiply(kDecayK[c], per_second));
     }
     // Tone: the damping table, interpolated.
     const u32 tone = static_cast<u32>(control(p[kTone])) >> 16;  // Q15
@@ -705,8 +737,12 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
     lines.scratch = buffer.words + kScratch;
 
     controls(k, parameters);
-    // Light balances moon (sub) and sun (up); Shimmer scales both.
-    const i32 amount = control(parameters[kShimmer]), light = control(parameters[kLight]);
+    // Light balances moon (sub) and sun (up); Shimmer scales both. Its last
+    // 5% at each end turns the other layer fully off, and its shifter rests:
+    // 0.05 .. 0.95 spreads over 0 .. 1.
+    const i32 amount = control(parameters[kShimmer]);
+    const i32 raw = control(parameters[kLight]) - 107374182;  // less 0.05
+    const i32 light = raw <= 0 ? 0 : raw >= 1932735283 ? kMaximum : add(raw, multiply(raw, 238609294));  // x 1/0.9
     // The sub: 1.5 x its share, plus as much again cubed, so it reaches twice
     // that (+6 dB) at the top while low settings stay close. Held at a quarter
     // here (up to 0.75) and applied x4.
@@ -716,31 +752,26 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
     const bool listen_up = up_target > 0 || k.up_gain > 0;
     const bool listen_sub = sub_target > 0 || k.sub_gain > 0;
 
-    for (unsigned i = 0; i < opxy::block_frames; ++i) {
+    // Frames in pairs (a block is a whole number of them): each pair's first
+    // is decimated and output, then its second runs the tick at half rate.
+    for (unsigned i = 0; i < opxy::block_frames; i += 2) {
         // Decimate: a one-pole at 8 kHz, then every other sample.
-        const i32 l = onepole(k.down[0], left[i], kDecimate);
-        const i32 r = onepole(k.down[1], right[i], kDecimate);
-        if (k.odd) {
-            k.sub_gain = glide(k.sub_gain, sub_target);
-            k.up_gain = glide(k.up_gain, up_target);
-            if ((k.t & (kModTicks - 1)) == 0) modulate(k);
-            tick(k, lines, l, r, listen_up, listen_sub);
-            for (i32 ch = 0; ch < 2; ++ch) {
-                k.held[ch][0] = k.held[ch][1];
-                k.held[ch][1] = k.heard[ch];
-            }
-        }
-        // Back to full rate: halfway between the last two, then the latest,
-        // smoothed by a one-pole at 8 kHz.
-        i32 o[2];
+        onepole(k.down, add(left[i] >> 1, right[i] >> 1), kDecimate);
+        // Back to full rate: halfway between the last two, then the latest
+        // (the tank is dark, so linear interpolation is clean enough).
+        left[i] = add(k.held[0][0] >> 1, k.held[0][1] >> 1);
+        right[i] = add(k.held[1][0] >> 1, k.held[1][1] >> 1);
+        const i32 in = onepole(k.down, add(left[i + 1] >> 1, right[i + 1] >> 1), kDecimate);
+        k.sub_gain = glide(k.sub_gain, sub_target);
+        k.up_gain = glide(k.up_gain, up_target);
+        if ((k.t & (kModTicks - 1)) == 0) modulate(k);
+        tick(k, lines, in, listen_up, listen_sub);
         for (i32 ch = 0; ch < 2; ++ch) {
-            const i32 v = k.odd ? k.held[ch][1] : add(k.held[ch][0] >> 1, k.held[ch][1] >> 1);
-            o[ch] = onepole(k.smooth[ch], v, kDecimate);
+            k.held[ch][0] = k.held[ch][1];
+            k.held[ch][1] = k.heard[ch];
         }
-        k.odd = !k.odd;
-        // Width: keep the middle, scale the sides, then the autopan's sway.
-        left[i] = o[0];
-        right[i] = o[1];
+        left[i + 1] = k.held[0][1];
+        right[i + 1] = k.held[1][1];
     }
     stored = k;
 }

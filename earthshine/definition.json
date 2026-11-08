@@ -155,7 +155,7 @@
   ],
   "presets": {},
   "resources": {
-    "bufferBytes": 318496,
+    "bufferBytes": 290848,
     "display": {
       "stateBytes": 60,
       "stateAlignment": 4,

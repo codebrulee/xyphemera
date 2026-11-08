@@ -8,16 +8,6 @@ import json
 import math
 
 R = 22050.0
-SIZE = 1.3
-
-
-class Rng:  # the float prototype's LCG, so lengths match it
-    def __init__(self, seed):
-        self.s = seed
-
-    def next(self):
-        self.s = (self.s * 1664525 + 1013904223) & 0xFFFFFFFF
-        return (self.s >> 8) / 16777216.0
 
 
 def pow2(n):
@@ -35,56 +25,41 @@ def onepole(hz, fs):
     return q31(1 - math.exp(-2 * math.pi * hz / fs))
 
 
-rng = Rng(1)
-diff_len, diff_flip = [], []
-span = 6.0 * SIZE
-for s in range(4):
-    row, flips = [], []
-    for c in range(8):
-        lo, hi = span * c / 8, span * (c + 1) / 8
-        row.append(int((lo + rng.next() * (hi - lo)) * 0.001 * R) + 1)
-        flips.append(-1 if rng.next() < 0.5 else 1)
-    diff_len.append(row)
-    diff_flip.append(flips)
-    span *= 2
-
 MOD_MAX = 222  # 10 ms at half rate, plus a sample
-# Four lines at twice the eight's lengths: as many resonances per hertz as eight,
-# so low notes' tails ring on pitch, at half the arithmetic.
-STRETCH = 2.0
-fdn_len = []
-# Input diffusion: four all-passes per side (Schroeder), the right a little
-# longer so the sides decorrelate. (The draws above stay, so the FDN's lengths
-# keep their pattern.)
-AP_MS = [4.77, 3.60, 12.7, 9.30]
-ap_len = [[int(ms * SIZE * f * 0.001 * R) for ms in AP_MS] for f in (1.0, 1.087)]
-for c in range(8):
-    t = c / 7
-    ms = 90.0 * (200.0 / 90.0) ** t * SIZE * (0.95 + 0.1 * rng.next()) * STRETCH
-    fdn_len.append(int(ms * 0.001 * R))
-# The FDN keeps four of the eight, spread across the range: lighter on the
-# OP-XY, where the tank's work is what the effect costs.
-FDN_KEPT = (0, 3, 5, 7)
-LFO_STEPS = (21426, 27268, 33111, 38954, 44797, 50640, 56483, 52587)
-fdn_len = [fdn_len[i] for i in FDN_KEPT]
-lfo_steps = [LFO_STEPS[i] for i in FDN_KEPT]
-lfo_phase = [i * 0x20000000 for i in FDN_KEPT]
+# The two modulated delays' drift rates (per-tick phase steps, before Rate),
+# half a cycle apart.
+lfo_steps = [21426, 38954]
 
+# The figure-eight tank (Dattorro's plate, Griesinger's topology), its lengths
+# from the paper (29,761 Hz) scaled to 22,050 Hz and doubled, so the loop is as
+# long as the four-line FDN's and low notes' tails ring as close to pitch.
+SC = 22050.0 / 29761.0 * 2.0
+def sc(n): return int(round(n * SC))
+IN_AP = [sc(n) for n in (142, 107, 379)]  # the paper's first three (of four)
+AP1 = [sc(672), sc(908)]      # left, right: the decay diffusers (-0.7)
+D1 = [sc(4453), sc(4217)]     # the modulated delays
+AP2 = [sc(1800), sc(2656)]    # the second diffusers (0.5)
+D2 = [sc(3720), sc(3163)]
+# The paper's output taps, its first five a side (of seven): the loop is dense
+# enough that the last two (short ones from the other half) add little.
+TAPS_L = [('d1', 1, 266, 1), ('d1', 1, 2974, 1), ('ap2', 1, 1913, -1), ('d2', 1, 1996, 1), ('d1', 0, 1990, -1)]
+TAPS_R = [('d1', 0, 353, 1), ('d1', 0, 3627, 1), ('ap2', 0, 1228, -1), ('d2', 0, 2673, 1), ('d1', 1, 2111, -1)]
 SHIFT_LINE = 4096
 PRE = 512
 
 # Layout: lines in words, each a power of two, after the Tank struct (reserved).
 TANK_WORDS = 512
 lines = []
-for side in range(2):
-    for n in ap_len[side]:
-        lines.append(('allpass', pow2(n + 2)))
-for c in range(4):
-    lines.append(('fdn', pow2(fdn_len[c] + MOD_MAX + 4)))
+for n in IN_AP:
+    lines.append(('allpass', pow2(n + 2)))
+for h in range(2):
+    lines.append(('ap1', pow2(AP1[h] + 2)))
+    lines.append(('d1', pow2(D1[h] + MOD_MAX + 4)))
+    lines.append(('ap2', pow2(AP2[h] + 2)))
+    lines.append(('d2', pow2(D2[h] + 2)))
 for k in range(2):  # up, sub
     lines.append(('shift', SHIFT_LINE))
-for k in range(2):
-    lines.append(('pre', PRE))
+lines.append(('pre', PRE))  # the input, in mono
 # The shimmer's own delay (Delay, up to 500 ms) before it enters the tank.
 lines.append(('shimdelay', pow2(int(0.5 * R) + 2)))
 offsets, at = [], TANK_WORDS
@@ -99,7 +74,7 @@ total = at + SCRATCH
 assert total * 4 <= 524288, total
 
 # Decay: log2(gain) per line = -log2(1000) * L / (RT60 * R).
-decay_k = [int(round(math.log2(1000) * L / R * 65536)) for L in fdn_len]
+decay_k = [int(round(math.log2(1000) * (AP1[h] + D1[h] + AP2[h] + D2[h]) / R * 65536)) for h in range(2)]
 
 # Tone: damping cutoff 700 Hz .. 9 kHz, exponential, 33 points.
 tone = [onepole(700 * (9000 / 700) ** (i / 32), R) for i in range(33)]
@@ -119,25 +94,27 @@ w(f'const u32 kScratch = {scratch_at};  // the search scratch\'s first word')
 w(f'const u32 kScratchWords = {SCRATCH};')
 w(f'const u32 kTankWords = {TANK_WORDS};')
 w(f'const u32 kModMax = {MOD_MAX};')
-w('// Input diffusion: 4 all-passes per side, lengths in half-rate samples.')
-w('const u32 kAllpassLen[2][4] = {' + ', '.join('{' + ', '.join(map(str, r)) + '}' for r in ap_len) + '};')
-w('// FDN: 4 lines, ' + ', '.join(f'{L / R * 1000:.0f}' for L in fdn_len) + ' ms.')
-w('const u32 kFdnLen[4] = {' + ', '.join(map(str, fdn_len)) + '};')
-w('// -log2(1000) * L / R, Q16: a line\'s log2 gain per second of RT60.')
-w('const i32 kDecayK[4] = {' + ', '.join(map(str, decay_k)) + '};')
-w('// Line offsets (words) and masks: 8 all-pass, 4 FDN, 2 shifter, 2 predelay, 1 shimmer delay.')
-w('const u32 kLineOffset[17] = {' + ', '.join(map(str, offsets)) + '};')
-w('const u32 kLineMask[17] = {' + ', '.join(str(n - 1) for _, n in lines) + '};')
-w('enum { kAllpassLine = 0, kFdnLine = 8, kShiftLine = 12, kPreLine = 14, kShimmerLine = 16, kLines = 17 };')
-# Output taps along each FDN line (as a plate's): the long lines speak before
-# they come round, and every pass adds several echoes. Ages in samples.
-TAP_FRACTIONS = (0.11, 0.37, 0.71)
-taps = [[max(2, int(L * f)) for f in TAP_FRACTIONS] for L in fdn_len]
-w('// Output taps along each FDN line, ages in half-rate samples.')
-w('const u32 kTap[4][3] = {' + ', '.join('{' + ', '.join(map(str, r)) + '}' for r in taps) + '};')
-w('// The FDN lines\' LFOs: increments a tick (0.11 .. 0.29 Hz at half rate) and starting phases.')
-w('const u32 kLfoStep[4] = {' + ', '.join(map(str, lfo_steps)) + '};')
-w('const u32 kLfoPhase[4] = {' + ', '.join(f'{p}u' for p in lfo_phase) + '};')
+w(f'// Input diffusion: {len(IN_AP)} all-passes on the mono input, half-rate samples.')
+w(f'const u32 kAllpasses = {len(IN_AP)};')
+w(f'const u32 kAllpassLen[{len(IN_AP)}] = {{' + ', '.join(map(str, IN_AP)) + '};')
+w('// The figure-eight: per half (left, right), its diffusers and delays, half-rate samples.')
+w('const u32 kAp1[2] = {%d, %d}, kD1[2] = {%d, %d}, kAp2[2] = {%d, %d}, kD2[2] = {%d, %d};' % (AP1[0], AP1[1], D1[0], D1[1], AP2[0], AP2[1], D2[0], D2[1]))
+w('const i32 kDecayK[2] = {' + ', '.join(map(str, decay_k)) + '};')
+w(f'// Line offsets (words) and masks: {len(IN_AP)} all-pass, 8 tank, 2 shifter, 1 predelay, 1 shimmer delay.')
+w(f'const u32 kLineOffset[{len(lines)}] = {{' + ', '.join(map(str, offsets)) + '};')
+w(f'constexpr u32 kLineMask[{len(lines)}] = {{' + ', '.join(str(n - 1) for _, n in lines) + '};')
+A = len(IN_AP)
+w(f'enum {{ kAllpassLine = 0, kTankLine = {A}, kShiftLine = {A + 8}, kPreLine = {A + 10}, kShimmerLine = {A + 11}, kLines = {A + 12} }};')
+assert A + 12 == len(lines)
+w('// Tank lines: kTankLine + half * 4 + (0 ap1, 1 d1, 2 ap2, 3 d2).')
+w(f'// Output taps (Dattorro\'s, scaled): line, age, sign, {len(TAPS_L)} a side.')
+w(f'const u32 kTaps = {len(TAPS_L)};')
+def taps(lst): return ', '.join('{%d, %d, %d}' % (h * 4 + {'d1': 1, 'ap2': 2, 'd2': 3}[k], sc(a), s) for k, h, a, s in lst)
+w(f'constexpr i32 kTapsLeft[{len(TAPS_L)}][3] = {{' + taps(TAPS_L) + '};')
+w(f'constexpr i32 kTapsRight[{len(TAPS_R)}][3] = {{' + taps(TAPS_R) + '};')
+w('// The modulated delays\' LFOs: increments a tick and starting phases.')
+w('const u32 kLfoStep[2] = {' + ', '.join(map(str, lfo_steps)) + '};')
+w('const u32 kLfoPhase[2] = {0u, 2147483648u};')
 w('// Tone: one-pole damping coefficient over the control, Q31, 33 points.')
 w('const i32 kToneCoefficient[33] = {' + ', '.join(map(str, tone)) + '};')
 w('// Fixed one-poles, Q31.')

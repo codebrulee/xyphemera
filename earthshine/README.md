@@ -17,6 +17,8 @@ An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
 - **Dry** keeps the source in the stock mixer at full send; it does not add
   clean audio to the return.
 - **Mod** drifts the tank's delay lines, by up to 10 ms and up to 2.5 times as fast at full: gentle through its first half, seasick at the top. It defaults to off.
+- **Light**'s last 5% at each end turns the other layer fully off, and its
+  pitch shifter stops working: the far ends are the lightest settings.
 - **Delay** holds the shimmer back before it reaches the tank; the reverb itself starts at once.
 - **Swell** fades the shimmer in after each note, as a slow follower of the input catches a fast one.
 - **Tone** sets the tank's damping (700 Hz to 9 kHz) and the vowel the shimmer sings: "oo" when dark, "oh", "ah" in the middle, "eh" when bright. The vowel is broad and blended in (more as each note starts), and leaves the shimmer below 250 Hz alone so the sub keeps its body.
@@ -25,11 +27,15 @@ An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
 
 ## How it works
 
-- A 4-line feedback delay network after three all-passes per side, running
-  at half rate (22,050 Hz): dark by design, and light enough for the OP-XY
-  (its cost is the tank's arithmetic, so the tank is kept small). Its lines
-  are long, so it has as many resonances as an 8-line tank and low notes'
-  tails ring on pitch; two output taps along each line keep it a wash, not echoes.
+- A figure-eight tank (the plate topology Griesinger devised and Dattorro
+  published): the input, in mono, through three all-passes, then around one
+  loop of two halves, each a diffuser, a delay Mod drifts, damping, a second
+  diffuser and a delay, each half's end feeding the other. Five taps a side
+  along the loop make the stereo. It runs at half rate (22,050 Hz): dark by
+  design, and light enough for the OP-XY. Its loop is long (twice the paper's,
+  scaled to the rate), so it has resonances close enough together that low
+  notes' tails ring on pitch, and its in-loop diffusers make it dense from the
+  first moments.
 - Correlation-aligned pitch shifters: each splice lands, to a fraction of a
   sample, where the outgoing and incoming waveforms match, so the layers hold
   pitch (within a cent at the exact intervals; free-running grains drift by
@@ -39,7 +45,7 @@ An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
 - The sub layer shifts the input once, in mono, so it stays one interval down
   instead of falling further each pass; the up layer shifts the wet's middle
   and recirculates, so it climbs, and the tank spreads it back to stereo.
-  Mod drifts all four of the tank's lines. Fine's
+  Mod drifts both halves' delays. Fine's
   stretched octaves stack partials that share no period, so with Fine away
   from centre the recirculating layer wanders a few cents.
 - The shimmer is driven into a soft, slightly lopsided curve at a level it

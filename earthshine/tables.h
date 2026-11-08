@@ -6,26 +6,29 @@ namespace earthshine {
 namespace tables {
 using opxy::i32;
 using opxy::u32;
-const u32 kWords = 79624;  // buffer words used, scratch included
-const u32 kScratch = 78080;  // the search scratch's first word
+const u32 kWords = 72712;  // buffer words used, scratch included
+const u32 kScratch = 71168;  // the search scratch's first word
 const u32 kScratchWords = 1544;
 const u32 kTankWords = 512;
 const u32 kModMax = 222;
-// Input diffusion: 4 all-passes per side, lengths in half-rate samples.
-const u32 kAllpassLen[2][4] = {{136, 103, 364, 266}, {148, 112, 395, 289}};
-// FDN: 4 lines, 241, 314, 426, 514 ms.
-const u32 kFdnLen[4] = {5311, 6924, 9404, 11341};
-// -log2(1000) * L / R, Q16: a line's log2 gain per second of RT60.
-const i32 kDecayK[4] = {157311, 205088, 278545, 335919};
-// Line offsets (words) and masks: 8 all-pass, 4 FDN, 2 shifter, 2 predelay, 1 shimmer delay.
-const u32 kLineOffset[17] = {512, 768, 896, 1408, 1920, 2176, 2304, 2816, 3328, 11520, 19712, 36096, 52480, 56576, 60672, 61184, 61696};
-const u32 kLineMask[17] = {255, 127, 511, 511, 255, 127, 511, 511, 8191, 8191, 16383, 16383, 4095, 4095, 511, 511, 16383};
-enum { kAllpassLine = 0, kFdnLine = 8, kShiftLine = 12, kPreLine = 14, kShimmerLine = 16, kLines = 17 };
-// Output taps along each FDN line, ages in half-rate samples.
-const u32 kTap[4][3] = {{584, 1965, 3770}, {761, 2561, 4916}, {1034, 3479, 6676}, {1247, 4196, 8052}};
-// The FDN lines' LFOs: increments a tick (0.11 .. 0.29 Hz at half rate) and starting phases.
-const u32 kLfoStep[4] = {21426, 38954, 50640, 52587};
-const u32 kLfoPhase[4] = {0u, 1610612736u, 2684354560u, 3758096384u};
+// Input diffusion: 3 all-passes on the mono input, half-rate samples.
+const u32 kAllpasses = 3;
+const u32 kAllpassLen[3] = {210, 159, 562};
+// The figure-eight: per half (left, right), its diffusers and delays, half-rate samples.
+const u32 kAp1[2] = {996, 1345}, kD1[2] = {6598, 6249}, kAp2[2] = {2667, 3936}, kD2[2] = {5512, 4687};
+const i32 kDecayK[2] = {467194, 480345};
+// Line offsets (words) and masks: 3 all-pass, 8 tank, 2 shifter, 1 predelay, 1 shimmer delay.
+const u32 kLineOffset[15] = {512, 768, 1024, 2048, 3072, 11264, 15360, 23552, 25600, 33792, 37888, 46080, 50176, 54272, 54784};
+constexpr u32 kLineMask[15] = {255, 255, 1023, 1023, 8191, 4095, 8191, 2047, 8191, 4095, 8191, 4095, 4095, 511, 16383};
+enum { kAllpassLine = 0, kTankLine = 3, kShiftLine = 11, kPreLine = 13, kShimmerLine = 14, kLines = 15 };
+// Tank lines: kTankLine + half * 4 + (0 ap1, 1 d1, 2 ap2, 3 d2).
+// Output taps (Dattorro's, scaled): line, age, sign, 5 a side.
+const u32 kTaps = 5;
+constexpr i32 kTapsLeft[5][3] = {{5, 394, 1}, {5, 4407, 1}, {6, 2835, -1}, {7, 2958, 1}, {1, 2949, -1}};
+constexpr i32 kTapsRight[5][3] = {{1, 523, 1}, {1, 5375, 1}, {2, 1820, -1}, {3, 3961, 1}, {5, 3128, -1}};
+// The modulated delays' LFOs: increments a tick and starting phases.
+const u32 kLfoStep[2] = {21426, 38954};
+const u32 kLfoPhase[2] = {0u, 2147483648u};
 // Tone: one-pole damping coefficient over the control, Q31, 33 points.
 const i32 kToneCoefficient[33] = {388333961, 417245954, 448024185, 480742180, 515468226, 552263638, 591180785, 632260897, 675531644, 721004502, 768671934, 818504417, 870447374, 924418090, 980302705, 1037953405, 1097185963, 1157777808, 1219466807, 1281950994, 1344889463, 1407904666, 1470586318, 1532497100, 1593180265, 1652169189, 1708998767, 1763218419, 1814406314, 1862184200, 1906232105, 1946301963, 1982229165};
 // Fixed one-poles, Q31.
