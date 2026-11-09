@@ -63,9 +63,6 @@ An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
   Mod drifts both halves' delays. Fine's
   stretched octaves stack partials that share no period, so with Fine away
   from centre the recirculating layer wanders a few cents.
-- The shimmer is driven into a soft, slightly lopsided curve at a level it
-  follows, for the same warm character at any loudness, and its delay drifts
-  by up to 3 ms, a new target each second, so its timing breathes.
 - The arithmetic is 32-bit fixed point. The state lives in the send's buffer
   (`tools/make_tables.py` lays it out and sets `bufferBytes`), cleared a slice
   per block at start, during which the effect is silent (about 25 ms).

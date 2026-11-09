@@ -32,13 +32,6 @@ const u32 kClearPerBlock = 2048;  // words zeroed per block while starting (memo
 enum { kDecay, kTone, kLight, kShimmer, kDry, kMod, kFine, kWidth, kDelayChoice, kSwellChoice, kSubInterval, kUpInterval };
 const i32 kSubSemitones[3] = {-12, -24, -7};
 // The input all-passes' gains, shorter pair first (as Dattorro's input diffusion).
-// Character: the level the shimmer is driven at (its average, so a tone's peaks
-// reach about 0.95 of the curve: harmonics near -22 dB), and the gain out.
-const i32 kDriveLevel = 1288490189;  // 0.6
-const i32 kDriveMakeUp = 1234803097;  // 1.15, halved
-// The delay's drift: its span (half-rate samples, 3 ms) and ticks a target (1 s).
-const i32 kDriftSpan = 66;
-const u32 kDriftTicks = 22050;
 const i32 kDiffuse1 = 1503238554;  // 0.7: the loop's first diffusers (as -0.7)
 const i32 kAllpassGain[kAllpasses] = {1610612736, 1610612736, 1342177280};  // 0.75, 0.75, 0.625
 
@@ -124,31 +117,6 @@ struct Search {
     i32 jump;               // the result, Q16, once kDone
 };
 
-// A gain beyond Q31's range: m (Q31, 0.5..1) times 2^e.
-struct Scale {
-    i32 m, e;
-};
-
-// x times a scale, saturating.
-i32 scaled(i32 x, const Scale& s) {
-    const i32 y = multiply(x, s.m);
-    if (s.e <= 0) return y >> -s.e;
-    const i32 limit = kMaximum >> s.e;  // beyond it the shift would overflow
-    return y > limit ? kMaximum : y < -limit ? -kMaximum : y << s.e;
-}
-
-// The scale num / den (both non-negative Q31), held to 1/64 .. 64.
-Scale scale_of(i32 num, i32 den) {
-    i32 g = (num >> 1) / ((den >> 13) + 1);  // the ratio x 4096
-    if (g < 64) g = 64;
-    if (g > 262144) g = 262144;
-    Scale s = {0, 0};
-    while (g >= 4096) { g >>= 1; ++s.e; }
-    while (g < 2048) { g <<= 1; --s.e; }
-    s.m = g << 19;
-    return s;
-}
-
 // The halo's state: its bands' filter states, and this block's coefficients
 // (the state-variable filter's a1..a3 and each band's gain, with its fade).
 struct Halo {
@@ -168,8 +136,6 @@ struct Tank {
     i32 slide[2];                // per tick, toward the end of the block's
     i32 still;                   // Mod off and every line at its length: plain reads
     i32 decay_word, tone;
-    i32 shimmer_level;           // the shimmer's level (for the drive)
-    Scale drive_in, drive_out;   // this block's gains into and out of the drive
     i32 sub_gain, up_gain, depth, width, pan;  // smoothed
     u32 pan_phase;               // the autopan's sway, 2^32 a cycle
     i32 pan_left, pan_right;     // this block's gains, Q31
@@ -177,10 +143,6 @@ struct Tank {
     // (their ratio, gliding each tick) and the slow one's rise (0: Swell off).
     i32 follow_fast, follow_slow, swell, swell_target, swell_rise;
     u32 shimmer_delay;           // Delay, half-rate samples
-    // The delay's human drift: a slow random walk of 0..3 ms, a new target each
-    // second (Q16 samples), and its random number.
-    i32 drift, drift_slide;
-    u32 drift_left, random;
     i32 rate;                    // the LFOs' speed, Q16 (1 to 2.5)
     i32 wet[2];
     i32 heard[2];
@@ -630,33 +592,11 @@ void tick(Tank& k, const Lines& lines, i32 in, bool listen_up, bool listen_sub) 
                                  : k.follow_fast;
     k.swell = add(k.swell, (k.swell_target >> 8) - (k.swell >> 8));  // about 12 ms: no ripple per block
     i32 shimmer = multiply(add(up_scaled, sub), k.swell);
-    // Character: the shimmer brought to one level (kDriveLevel), driven into a
-    // soft, slightly lopsided curve (the tank's warm, plus a little second
-    // harmonic, as a valve stage), then returned to its own level. The same
-    // character however loud it is; the tank's input DC block takes out the
-    // second harmonic's offset.
     {
-        k.shimmer_level = add(k.shimmer_level, multiply((shimmer < 0 ? -(shimmer + 1) : shimmer) - k.shimmer_level, kFollowFast));
-        i32 driven = scaled(shimmer, k.drive_in);
-        driven = add(warm(driven), multiply(driven, driven) >> 3);
-        shimmer = scaled(driven, k.drive_out);
-    }
-    {
-        // Delay, drifting by up to 3 ms so the shimmer's timing breathes like a
-        // player's. Moving a delay bends its pitch a touch: a second a target
-        // keeps that under about 5 cents.
-        if (!k.drift_left) {
-            k.random = k.random * 1664525u + 1013904223u;
-            const i32 target = static_cast<i32>(k.random >> 16) * kDriftSpan;  // Q16 samples, 0..span
-            k.drift_slide = (target - k.drift) / static_cast<i32>(kDriftTicks);
-            k.drift_left = kDriftTicks;
-        }
-        k.drift += k.drift_slide;
-        --k.drift_left;
-        const Line& l = lines.line[kShimmerLine];
-        l.words[t & l.mask] = shimmer;
-        const i32 age = static_cast<i32>((k.shimmer_delay + 2) << 16) + k.drift;
-        shimmer = linear(l, t, age);
+        // Delay: a fixed one. (A delay that moves bends the pitch of all that
+        // passes through it, and the shimmer passes again and again.)
+        write<kShimmerLine>(lines, t, shimmer);
+        shimmer = read<kShimmerLine>(lines, t, k.shimmer_delay + 2);
     }
 
     // The figure-eight (Dattorro's plate, Griesinger's topology): the input,
@@ -767,12 +707,6 @@ void controls(Tank& k, opxy::Parameters p) {
         const i32 linear = ratio >= 32768 ? kMaximum : ratio << 16;
         k.swell_target = multiply(linear, linear);  // squared: a quieter start, a longer rise
     }
-    // The drive's gains: into the curve at kDriveLevel, and back out.
-    {
-        const i32 level = k.shimmer_level > 4096 ? k.shimmer_level : 4096;
-        k.drive_in = scale_of(kDriveLevel, level);
-        k.drive_out = scale_of(multiply(level, kDriveMakeUp), kDriveLevel >> 1);
-    }
     const u32 sub = choice(p[kSubInterval], 3);
     k.halo_mode = static_cast<i32>(choice(p[kUpInterval], 3));
     // Fine: with the octave, it stretches the intervals (rounded, so the centre
@@ -825,7 +759,10 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
     // Light balances moon (sub) and sun (up); Shimmer scales both. Its last
     // 5% at each end turns the other layer fully off, and its shifter rests:
     // 0.05 .. 0.95 spreads over 0 .. 1.
-    const i32 amount = control(parameters[kShimmer]);
+    // Shimmer: the average of the control and its square, so its middle is
+    // gentler (at 50, 0.375) and its top the same.
+    const i32 shimmer_control = control(parameters[kShimmer]);
+    const i32 amount = (shimmer_control >> 1) + (multiply(shimmer_control, shimmer_control) >> 1);
     const i32 raw = control(parameters[kLight]) - 107374182;  // less 0.05
     const i32 light = raw <= 0 ? 0 : raw >= 1932735283 ? kMaximum : add(raw, multiply(raw, 238609294));  // x 1/0.9
     // The sub: 1.5 x its share, plus as much again cubed, so it reaches twice
