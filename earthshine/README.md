@@ -7,6 +7,17 @@ at a time or as a halo that rises or falls for ever. Light turns from the moon
 (all sub) to the sun (all up); Shimmer sets how much of either.
 An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
 
+| Page 1 (defaults) | Page 2 | Shift held |
+| --- | --- | --- |
+| ![Page 1: the Earth inside a dial from the moon to the sun](screens/page1.png) | ![Page 2: Dry, Mod, Fine, Width](screens/page2.png) | ![Shift: Delay, Swell, Sub, Up](screens/shift.png) |
+
+The screen is the Earth inside a dial from the moon to the sun. Light turns
+the dial and the Earth, lighting its sun side; Dry sets its size; Mod makes
+its axis nod and drift. With Shift held, the row's choices show, and the Sub
+and Up intervals sit under the moon and the sun. (These are drawn on a computer from
+`display.cpp`'s frames with the panel artwork, so the fonts differ from the
+device's.)
+
 ## Controls
 
 | | 1 | 2 | 3 | 4 |
