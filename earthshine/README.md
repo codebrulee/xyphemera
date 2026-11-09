@@ -48,8 +48,10 @@ An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
   sample, where the outgoing and incoming waveforms match, so the layers hold
   pitch (within a cent at the exact intervals; free-running grains drift by
   over a semitone). Each shifter's search for its next splice runs a fixed
-  amount each sample, pausing even mid-comparison, starting early enough to
-  finish before the splice is due, so no single block carries it.
+  amount every few samples, pausing even mid-comparison, starting early enough
+  to finish before the splice is due, so no single block carries it. It
+  compares 12-bit copies of the audio with 16-bit multiplies, a coarse pass
+  then a fine one around its best.
 - The sub layer shifts the input once, in mono, so it stays one interval down
   instead of falling further each pass; the up layer shifts the wet's middle
   and recirculates, so it climbs, and the tank spreads it back to stereo. The

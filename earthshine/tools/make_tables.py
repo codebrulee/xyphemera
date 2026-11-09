@@ -66,10 +66,11 @@ offsets, at = [], TANK_WORDS
 for _, n in lines:
     offsets.append(at)
     at += n
-# The shifters' search scratch, one area each (their searches run together):
-# a match plus its 2 x search + match lags. Up first (220, 265), then sub (441, 331).
+# The shifters' search scratch, one area each (their searches run together),
+# in 16-bit samples: a match plus its 2 x search + match lags. Up first
+# (220, 265), then sub (441, 331); two samples a word.
 UP_SCRATCH = 2 * 220 + 2 * 265
-SCRATCH = UP_SCRATCH + 2 * 441 + 2 * 331
+SCRATCH = (UP_SCRATCH + 2 * 441 + 2 * 331 + 1) // 2
 scratch_at = at
 total = at + SCRATCH
 assert total * 4 <= 524288, total
@@ -93,7 +94,7 @@ w('using opxy::u32;')
 w(f'const u32 kWords = {total};  // buffer words used, scratch included')
 w(f'const u32 kScratch = {scratch_at};  // the search scratch\'s first word')
 w(f'const u32 kScratchWords = {SCRATCH};')
-w(f'const u32 kSubScratch = {UP_SCRATCH};  // the sub\'s area, from kScratch')
+w(f'const u32 kSubScratch = {UP_SCRATCH};  // the sub\'s area, in samples from kScratch')
 w(f'const u32 kTankWords = {TANK_WORDS};')
 w(f'const u32 kModMax = {MOD_MAX};')
 w(f'// Input diffusion: {len(IN_AP)} all-passes on the mono input, half-rate samples.')

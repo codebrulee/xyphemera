@@ -1,5 +1,6 @@
 #include "core.h"
 #include <opxy/q31.hpp>
+#include <opxy/q15.hpp>
 
 // Earthshine: a shimmer reverb whose tail is fed back through pitch shifters. The sub
 // layer sits an interval under the notes (one octave by default); the up layer
@@ -16,6 +17,7 @@
 // A send effect: it returns only the wet; Dry keeps the source in the stock mixer.
 namespace earthshine {
 namespace {
+using opxy::i16;
 using opxy::i32;
 using opxy::u32;
 using opxy::q31::add;
@@ -97,17 +99,17 @@ struct Geometry {
     i32 xfade, centre[2], search, match, low, high;
     i32 early;      // samples before low/high its search starts, to finish in time
     i32 fade_step;  // Q31 per splice sample: kMaximum / xfade
-    i32 budget;     // its search's work a tick, in correlation products
+    i32 budget;     // its search's work a tick: correlation products and copied samples
 };
 // Up: 15 ms splice, 33/39 ms jumps +-12 ms, 10 ms match; room for up to +19.
 // Sub: 30 ms splice, 64/76 ms jumps +-15 ms, 20 ms match.
-const Geometry kUp = {331, {728, 860}, 265, 220, 886, 0, 320, 2147483647 / 331, 24};
+const Geometry kUp = {331, {728, 860}, 265, 220, 886, 0, 320, 2147483647 / 331, 18};
 // The sub's search is the longest (a 20 ms match over +-15 ms): it starts 560
 // samples early, which -24's faster taps still cover after the splice.
-const Geometry kSub = {662, {1411, 1676}, 331, 441, 445, 2452, 560, 2147483647 / 662, 16};
-// A search's reference and lags must fit the scratch.
+const Geometry kSub = {662, {1411, 1676}, 331, 441, 445, 2452, 560, 2147483647 / 662, 13};
+// A search's reference and lags must fit the scratch (16-bit samples).
 static_assert(2 * 220 + 2 * 265 <= static_cast<int>(tables::kSubScratch), "up search scratch");
-static_assert(2 * 441 + 2 * 331 <= static_cast<int>(tables::kScratchWords - tables::kSubScratch), "sub search scratch");
+static_assert(2 * 441 + 2 * 331 <= static_cast<int>(2 * tables::kScratchWords - tables::kSubScratch), "sub search scratch");
 
 // The splice search in progress (search_start, search_step).
 struct Search {
@@ -117,7 +119,7 @@ struct Search {
     u32 t0;                 // the tick it started
     i32 a, up, centre, shift;
     i32 best, best_score, fine_from;
-    i32 score_at[15];
+    i32 score_at[11];       // the fine pass's scores (2 kFineHalf + 1)
     i32 lag, k, c, e;       // the lag being scored, paused at sample k with its sums
     i32 jump;               // the result, Q16, once kDone
 };
@@ -201,7 +203,7 @@ struct Line {
 
 struct Lines {
     Line line[kLines];
-    i32* scratch;
+    i16* scratch;  // the searches' samples, 12 bits each
 };
 
 i32 at(const Line& l, u32 t, u32 age) { return l.words[(t - age) & l.mask]; }
@@ -226,14 +228,20 @@ i32 bits(u32 v) {
 // every 8th lag, then every lag around the best, then a parabola to a fraction
 // of a sample. Samples are reduced to 12 bits so the sums fit 32 bits.
 //
-// Each shifter has its own search, which runs a fixed amount each tick (its
-// geometry's budget, in correlation products, a copied sample costing two:
+// Each shifter has its own search, which runs a fixed amount every few ticks
+// (its geometry's budget a tick, in correlation products and copied samples:
 // enough to finish inside its window), pausing even inside a lag, so no block
-// carries more than its share: it starts `early`
-// samples before the tap runs out and is done before. Ages are taken at the
+// carries more than its share: it starts `early` samples before the tap runs
+// out and is done before. The searches are both often running at once, so
+// their budgets set the heaviest block: kept to what finishes in time. Ages are taken at the
 // tick it starts (t0): the taps keep their spacing, so the jump holds whenever
 // it is applied.
 enum { kIdle, kCopying, kCoarse, kRefining, kDone };
+// The fine pass: lags within kFineHalf of the coarse best (its grid is 8, so
+// the peak is within 4), comparing every kFineStep-th sample. The searches run
+// every kSearchEvery ticks, that many ticks' budget at once.
+const i32 kFineHalf = 5, kFineStep = 4, kSearchEvery = 4;
+static_assert(2 * kFineHalf + 1 <= 11, "fine scores");
 
 void search_start(Search& q, const Line& l, u32 t, i32 a, bool up, i32 centre, i32 who, i32 geometry, const Geometry& g) {
     q = Search();
@@ -261,21 +269,54 @@ void search_start(Search& q, const Line& l, u32 t, i32 a, bool up, i32 centre, i
     q.phase = kCopying;
 }
 
-// One tick of the search: copies, then lags, `budget` products' worth.
-__attribute__((noinline)) void search_step(Search& q, const Line& l, i32* scratch, const Geometry& g) {
-    i32 budget = g.budget;
+// One lag's products, `n` of them, `step` apart: the reference forward, the
+// candidates back. 16 x 16 products, a hardware loop on the Blackfin.
+template <i32 kStep>
+__attribute__((noinline)) void correlate(const i16* r, const i16* c, i32 n, i32* sums) {
+    i32 cs = sums[0], es = sums[1];
+    for (i32 i = 0; i < n; ++i) {
+        const i32 u = *r, v = *c;
+        cs += opxy::q15::product(u, v);
+        es += opxy::q15::product(v, v);
+        r += kStep;
+        c -= kStep;
+    }
+    sums[0] = cs;
+    sums[1] = es;
+}
+
+// `n` line samples into the scratch, reduced to 12 bits: from word `index`
+// (masked), stepping `dir` (+1 or -1).
+__attribute__((noinline)) void gather(i16* out, const i32* words, u32 mask, u32 index, i32 n, i32 dir, i32 shift) {
+    for (i32 i = 0; i < n; ++i) {
+        i32 v = words[index & mask] >> shift;
+        v = v > 2047 ? 2047 : v;
+        v = v < -2047 ? -2047 : v;
+        out[i] = static_cast<i16>(v);
+        index += static_cast<u32>(dir);
+    }
+}
+
+// A turn of the search (every kSearchEvery ticks): copies, then lags, `budget`
+// units' worth.
+__attribute__((noinline)) void search_step(Search& q, const Line& l, i16* scratch, const Geometry& g) {
+    i32 budget = g.budget * kSearchEvery;
     const i32 m = g.match, span = 2 * g.search + m;
-    i32* const ref = scratch;
-    i32* const cand = scratch + m;  // cand[idx]: the sample at age (at t0) base + idx
+    i16* const ref = scratch;
+    i16* const cand = scratch + m;  // cand[idx]: the sample at age (at t0) base + idx
     const i32 base = q.up ? q.a + q.centre - g.search - (m - 1) : q.a - (q.centre + g.search) - (m - 1);
     if (q.phase == kCopying) {
-        // Reference, then candidates, two products' worth a sample.
-        for (; q.i < m + span && budget > 0; ++q.i, budget -= 2) {
-            const i32 age = q.i < m ? q.a - q.i : base + (q.i - m);
-            i32 v = at(l, q.t0, age) >> q.shift;
-            v = v > 2047 ? 2047 : v < -2047 ? -2047 : v;
-            if (q.i < m) ref[q.i] = v;
-            else cand[q.i - m] = v;
+        // The reference (ages a, a - 1, ..: words forward), then the
+        // candidates (ages base, base + 1, ..: words back).
+        while (q.i < m + span && budget > 0) {
+            const bool reference = q.i < m;
+            const i32 end = reference ? m : m + span;
+            i32 n = budget;
+            if (n > end - q.i) n = end - q.i;
+            if (reference) gather(ref + q.i, l.words, l.mask, q.t0 - static_cast<u32>(q.a - q.i), n, 1, q.shift);
+            else gather(cand + (q.i - m), l.words, l.mask, q.t0 - static_cast<u32>(base + (q.i - m)), n, -1, q.shift);
+            q.i += n;
+            budget -= n;
         }
         if (q.i < m + span) return;
         q.phase = kCoarse;
@@ -289,17 +330,17 @@ __attribute__((noinline)) void search_step(Search& q, const Line& l, i32* scratc
         const bool fine = q.phase == kRefining;
         if (q.k == 0) {
             // The next lag, or the next phase.
-            const i32 to = fine ? q.fine_from + 14 : q.centre + g.search;
+            const i32 to = fine ? q.fine_from + 2 * kFineHalf : q.centre + g.search;
             if (q.i > to) {
                 if (fine) {
                     q.phase = kDone;
                     break;
                 }
                 q.phase = kRefining;
-                q.fine_from = q.best - 7;
+                q.fine_from = q.best - kFineHalf;
                 q.i = q.fine_from;
                 q.best_score = -1;
-                for (i32 n = 0; n < 15; ++n) q.score_at[n] = -1;
+                for (i32 n = 0; n <= 2 * kFineHalf; ++n) q.score_at[n] = -1;
                 continue;
             }
             q.lag = q.i;
@@ -308,16 +349,18 @@ __attribute__((noinline)) void search_step(Search& q, const Line& l, i32* scratc
             q.c = q.e = 0;
         }
         const i32 j = q.lag;
-        const i32 k_step = fine ? 2 : 8;
+        const i32 k_step = fine ? kFineStep : 8;
         const i32 offset = q.up ? j - q.centre + g.search + m - 1 : q.centre + g.search - j + m - 1;
-        i32 c = q.c, e = q.e, k = q.k;
-        const i32 stop = k + budget * k_step < m ? k + budget * k_step : m;
-        for (; k < stop; k += k_step) {
-            const i32 u = ref[k], v = cand[offset - k];
-            c += u * v;
-            e += v * v;
-            --budget;
-        }
+        i32 k = q.k;
+        // The products left in this lag (k_step is 2 or 8), up to the budget.
+        i32 n = (m - k + k_step - 1) >> (fine ? (kFineStep == 2 ? 1 : 2) : 3);
+        if (n > budget) n = budget;
+        i32 sums[2] = {q.c, q.e};
+        if (fine) correlate<kFineStep>(ref + k, cand + offset - k, n, sums);
+        else correlate<8>(ref + k, cand + offset - k, n, sums);
+        k += n * k_step;
+        budget -= n;
+        const i32 c = sums[0], e = sums[1];
         if (k < m) {
             // Out of budget mid-lag: resume here next tick.
             q.k = k;
@@ -340,7 +383,7 @@ __attribute__((noinline)) void search_step(Search& q, const Line& l, i32* scratc
     // score and its two neighbours, held within half a sample. Q16.
     q.jump = q.best * 65536;
     const i32 i = q.best - q.fine_from;
-    if (q.best_score > 0 && i > 0 && i < 14 && q.score_at[i - 1] >= 0 && q.score_at[i + 1] >= 0) {
+    if (q.best_score > 0 && i > 0 && i < 2 * kFineHalf && q.score_at[i - 1] >= 0 && q.score_at[i + 1] >= 0) {
         // Scores reduced below 2^14 so (l - r) * 2^15 fits 32 bits.
         const i32 reduce = bits(static_cast<u32>(q.best_score)) > 14 ? bits(static_cast<u32>(q.best_score)) - 14 : 0;
         const i32 left = q.score_at[i - 1] >> reduce, mid = q.best_score >> reduce, right = q.score_at[i + 1] >> reduce;
@@ -776,7 +819,7 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
     Tank& k = stored;
     Lines lines;
     for (u32 n = 0; n < kLines; ++n) lines.line[n] = Line{buffer.words + kLineOffset[n], kLineMask[n]};
-    lines.scratch = buffer.words + kScratch;
+    lines.scratch = reinterpret_cast<i16*>(buffer.words + kScratch);
 
     controls(k, parameters);
     // Light balances moon (sub) and sun (up); Shimmer scales both. Its last
@@ -811,9 +854,9 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
         tick(k, lines, in, listen_up, listen_sub);
         // The splice searches in progress, a tick's worth each (here, between
         // ticks, where little else is held in registers).
-        if (k.search[0].owner && k.search[0].phase != kDone)
+        if ((k.t & (kSearchEvery - 1)) == 0 && k.search[0].owner && k.search[0].phase != kDone)
             search_step(k.search[0], lines.line[kShiftLine], lines.scratch, kUp);
-        if (k.search[1].owner && k.search[1].phase != kDone)
+        if ((k.t & (kSearchEvery - 1)) == 0 && k.search[1].owner && k.search[1].phase != kDone)
             search_step(k.search[1], lines.line[kShiftLine + 1], lines.scratch + kSubScratch, kSub);
         for (i32 ch = 0; ch < 2; ++ch) {
             k.held[ch][0] = k.held[ch][1];

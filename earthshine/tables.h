@@ -6,10 +6,10 @@ namespace earthshine {
 namespace tables {
 using opxy::i32;
 using opxy::u32;
-const u32 kWords = 73682;  // buffer words used, scratch included
+const u32 kWords = 72425;  // buffer words used, scratch included
 const u32 kScratch = 71168;  // the search scratch's first word
-const u32 kScratchWords = 2514;
-const u32 kSubScratch = 970;  // the sub's area, from kScratch
+const u32 kScratchWords = 1257;
+const u32 kSubScratch = 970;  // the sub's area, in samples from kScratch
 const u32 kTankWords = 512;
 const u32 kModMax = 222;
 // Input diffusion: 3 all-passes on the mono input, half-rate samples.
