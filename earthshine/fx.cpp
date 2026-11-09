@@ -31,6 +31,10 @@ const u32 kClearPerBlock = 2048;  // words zeroed per block while starting (memo
 // The controls, in definition.json order, then the Shift row: Delay, Swell, Sub, Up.
 enum { kDecay, kTone, kLight, kShimmer, kDry, kMod, kFine, kWidth, kDelayChoice, kSwellChoice, kSubInterval, kUpInterval };
 const i32 kSubSemitones[3] = {-12, -24, -7};
+// Release: the input level that holds the up layer's feedback open (-54 dB),
+// and its fall a block once the input is below it (0.3 s).
+const i32 kReleaseFloor = 4294967;
+const i32 kReleaseFall = 2137120301;
 // The input all-passes' gains, shorter pair first (as Dattorro's input diffusion).
 const i32 kDiffuse1 = 1503238554;  // 0.7: the loop's first diffusers (as -0.7)
 const i32 kAllpassGain[kAllpasses] = {1610612736, 1610612736, 1342177280};  // 0.75, 0.75, 0.625
@@ -151,7 +155,8 @@ struct Tank {
     Search search[2];            // each shifter's splice search: up, sub
     i32 halo_mode;               // Up: 0 the octave, 1 the halo rising, 2 falling
     Halo halo;
-    i32 halo_direct;             // the halo's share heard directly, this tick
+    i32 direct;                  // the shimmer heard directly (not through the tank), this tick
+    i32 release;                 // the octave's feedback: open while the input sounds
     Shifter shifter[2];          // up, sub
 };
 
@@ -560,25 +565,34 @@ void tick(Tank& k, const Lines& lines, i32 in, bool listen_up, bool listen_sub) 
     sub = onepole(k.sub_low[0][1], onepole(k.sub_low[0][0], sub, kSubLow), kSubLow);
     // The up layer: one shifter on the wet's middle, fed back to both sides
     // (the tank spreads it again), band-limited to 250 Hz .. 6 kHz.
+    // It takes the note itself as well as the tank's output, so the first
+    // octave comes straight from what's played, not once the tank has built.
+    const i32 up_in = add(add(k.wet[0] >> 1, k.wet[1] >> 1), in >> 1);
     i32 up = 0;
     if (listen_up && k.halo_mode)
-        up = halo_tick(k.halo, add(k.wet[0] >> 1, k.wet[1] >> 1));
+        up = halo_tick(k.halo, up_in);
     else if (listen_up)
-        up = shift(k.shifter[0], 0, lines.line[kShiftLine], t, add(k.wet[0] >> 1, k.wet[1] >> 1),
+        up = shift(k.shifter[0], 0, lines.line[kShiftLine], t, up_in,
                    kUp, 0, 0, true, k.search[0]);
     else
-        write<kShiftLine>(lines, t, add(k.wet[0] >> 1, k.wet[1] >> 1));
+        write<kShiftLine>(lines, t, up_in);
     up = onepole(k.up_low[0], up - onepole(k.up_high[0], up, kUpHigh), kUpLow);
     i32 up_scaled = multiply(up, k.up_gain);
     // The halo mostly goes straight out (at 1.25, matching the octave's
     // level), a quarter of it back into the tank: fed back in full, it piles
     // up whichever of the tank's resonances a band lingers on into one tone.
-    k.halo_direct = 0;
     if (k.halo_mode) {
         const i32 direct = multiply(up_scaled, k.swell);
-        k.halo_direct = add(direct, direct >> 2);
+        k.direct = add(direct, direct >> 2);
         up_scaled >>= 2;
+    } else {
+        // The octave and sub: half straight out as well as into the tank, so
+        // they're heard within about 60 and 80 ms of a note, not once the
+        // tank has built.
+        k.direct = multiply(add(up_scaled, sub), k.swell) >> 1;
     }
+    // The up layer's feedback, faded once the input stops (process()).
+    up_scaled = multiply(up_scaled, k.release);
 
     // Swell: the shimmer comes in as the slow follower catches the fast one
     // after each note; Delay then holds it back before it reaches the tank.
@@ -615,7 +629,7 @@ void tick(Tank& k, const Lines& lines, i32 in, bool listen_up, bool listen_sub) 
     k.wet[0] = out[0];
     k.wet[1] = out[1];
     {
-        const i32 mid = add(add(out[0] >> 1, out[1] >> 1), k.halo_direct), side = multiply(add(out[0] >> 1, -(out[1] >> 1)), k.width);
+        const i32 mid = add(add(out[0] >> 1, out[1] >> 1), k.direct), side = multiply(add(out[0] >> 1, -(out[1] >> 1)), k.width);
         k.heard[0] = multiply(add(mid, side), k.pan_left);
         k.heard[1] = multiply(add(mid, -side), k.pan_right);
     }
@@ -651,6 +665,7 @@ void setup(Tank& k) {
     k.width = -1;  // none yet: the first block takes the control as it is
     k.pan = -1;
     k.swell = k.swell_target = kMaximum;
+    k.release = kMaximum;
     k.rate = 65536;
     k.shifter[0].age[0] = k.shifter[0].age[1] = (kUp.low + kUp.centre[0]) << 16;
     k.shifter[1].age[0] = k.shifter[1].age[1] = (kSub.low + kSub.centre[0] / 2) << 16;
@@ -774,6 +789,11 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
     const bool listen_up = up_target > 0 || k.up_gain > 0;
     if (k.halo_mode) halo_block(k.halo, control(parameters[kFine]), k.halo_mode == 2, up_target >> 2);  // a quarter recirculates
     const bool listen_sub = sub_target > 0 || k.sub_gain > 0;
+    // Release: open (over about 12 ms) while the input is above -54 dB, then
+    // falling over 0.3 s, so the up layer stops climbing once you let go and
+    // its tail dies with the reverb's instead of outliving it.
+    if (k.follow_fast > kReleaseFloor) k.release = add(k.release, (kMaximum - k.release) >> 3);
+    else k.release = multiply(k.release, kReleaseFall);
 
     // Frames in pairs (a block is a whole number of them): each pair's first
     // is decimated and output, then its second runs the tick at half rate.

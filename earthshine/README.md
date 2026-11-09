@@ -53,8 +53,13 @@ An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
   compares 12-bit copies of the audio with 16-bit multiplies, a coarse pass
   then a fine one around its best.
 - The sub layer shifts the input once, in mono, so it stays one interval down
-  instead of falling further each pass; the up layer shifts the wet's middle
-  and recirculates, so it climbs, and the tank spreads it back to stereo. The
+  instead of falling further each pass; the up layer shifts the wet's middle,
+  with the note itself, and recirculates, so it climbs, and the tank spreads
+  it back to stereo. Half of both goes straight to the output too, so the
+  shimmer arrives within about 60 ms (octave) and 80 ms (sub) of a note
+  rather than once the tank has built. Once the input falls silent the up
+  layer's feedback fades over 0.3 s, so its tail dies with the reverb's
+  instead of outliving it. The
   halo takes its place: four band-passes (trapezoidal state-variable filters,
   stable to the top of their range) on the wet's middle, a quarter of the
   range (250 Hz to 6 kHz) apart. Most of it goes straight to the output and a
