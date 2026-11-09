@@ -3,9 +3,9 @@
 Open-XY machines for the OP-XY: effects about light, time and memory. Each lives
 in its own folder, with its own definition, tests, README and catalog entry.
 
-| Machine | Kind | What it is |
-| --- | --- | --- |
-| [earthshine](earthshine/README.md) | send effect | A unique take on a bipolar shimmer verb, with a UI that takes the perspective of exploring the musical and emotional impact of light touching the earth |
+| Machine | Screen | Kind | What it is |
+| --- | --- | --- | --- |
+| [earthshine](earthshine/README.md) | [<img src="earthshine/screens/page1.png" width="240" alt="Earthshine's screen">](earthshine/README.md) | send effect | A shimmer reverb with a sub layer below and an octave or an endlessly rising or falling halo above, steered from moon to sun on a screen of the Earth catching the light |
 
 ## Develop
 

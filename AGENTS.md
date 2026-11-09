@@ -45,6 +45,9 @@ Adjust that path if the user already has the SDK elsewhere.
    the exact pinned commit. A new machine revision needs a new measurement.
    The catalog PR targets `staging` and changes only `catalog/machines.json`.
 
+Each machine's README opens with screenshots of its screen in `<folder>/screens/`,
+and its row in the pack README shows one of them (page 1 at the defaults).
+
 Keep generated outputs outside this repository. Firmware, stock content and
 firmware-containing packages must stay outside every checkout, even ignored
 folders. Device operations require an explicit user instruction; building and
