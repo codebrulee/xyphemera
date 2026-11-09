@@ -5,7 +5,7 @@ in its own folder, with its own definition, tests, README and catalog entry.
 
 | Machine | Kind | What it is |
 | --- | --- | --- |
-| [earthshine](earthshine/README.md) | send effect | exploring the musical and emotional impact of the light touching the earth |
+| [earthshine](earthshine/README.md) | send effect | A unique take on a bipolar shimmer verb, with a UI that takes the perspective of exploring the musical and emotional impact of light touching the earth |
 
 ## Develop
 
