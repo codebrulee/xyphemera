@@ -83,6 +83,10 @@ device's.)
   (`tools/make_tables.py` lays it out and sets `bufferBytes`), cleared a slice
   per block at start, during which the effect is silent (about 25 ms).
 
+## Build it yourself
+
+See [Build it yourself](../README.md#build-it-yourself) in the pack README.
+
 ## Develop
 
 Keep the [SDK](https://github.com/etcetc000/open-xy) beside this repository as
