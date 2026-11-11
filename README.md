@@ -5,7 +5,7 @@ in its own folder, with its own definition, tests, README and catalog entry.
 
 | Machine | Screen | Kind | What it is |
 | --- | --- | --- | --- |
-| [earthshine](earthshine/README.md) | [<img src="earthshine/screens/page1.png" width="240" alt="Earthshine's screen">](earthshine/README.md) | send effect | A unique take on a bipolar shimmer verb, with a UI that takes the perspective of exploring the musical and emotional impact of light touching the earth |
+| [earthshine](earthshine/README.md) | [<img src="earthshine/screens/page1.png" width="240" alt="Earthshine's screen">](earthshine/README.md) | send effect | A take on a bipolar shimmer verb, with a UI that takes the perspective of exploring the musical and emotional impact of light touching the earth |
 
 ## Build it yourself
 
