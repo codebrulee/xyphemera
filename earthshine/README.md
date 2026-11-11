@@ -11,8 +11,8 @@ An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
 | --- | --- | --- |
 | ![Page 1: the Earth inside a dial from the moon to the sun](screens/page1.png) | ![Page 2: Dry, Mod, Fine, Width](screens/page2.png) | ![Shift: Delay, Swell, Sub, Up](screens/shift.png) |
 
-The screen is the Earth with a dial controlling the light that hits the earth. Light turns
-the dial and the Earth, Dry sets its size; Mod makes
+The screen is the Earth with a dial controlling the amount of light hitting it. Light turns
+the dial and the Earth, Dry sets its size, Mod makes
 its axis wobble. With Shift held, you can control the shimmer intervals. (These are drawn on a computer from
 `display.cpp`'s frames with the panel artwork, so the fonts may differ from the
 device's.)
