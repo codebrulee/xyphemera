@@ -1,6 +1,6 @@
 # Earthshine
 
-A shimmer reverb for the OP-XY's sends: a warm, wide tank whose tail is
+A shimmer reverb send effect for the OP-XY. A warm, wide tank whose tail is
 pitch-shifted back into itself. The **sub** layer sits an interval under the
 notes (an octave by default); the **up** layer climbs above them, an octave
 at a time or as a halo that rises or falls for ever. Light turns from the moon
@@ -11,11 +11,10 @@ An Open-XY machine, ID `earthshine`, in the [Xyphemera](../README.md) pack.
 | --- | --- | --- |
 | ![Page 1: the Earth inside a dial from the moon to the sun](screens/page1.png) | ![Page 2: Dry, Mod, Fine, Width](screens/page2.png) | ![Shift: Delay, Swell, Sub, Up](screens/shift.png) |
 
-The screen is the Earth inside a dial from the moon to the sun. Light turns
-the dial and the Earth, lighting its sun side; Dry sets its size; Mod makes
-its axis nod and drift. With Shift held, the row's choices show, and the Sub
-and Up intervals sit under the moon and the sun. (These are drawn on a computer from
-`display.cpp`'s frames with the panel artwork, so the fonts differ from the
+The screen is the Earth with a dial controlling the light that hits the earth. Light turns
+the dial and the Earth, Dry sets its size; Mod makes
+its axis wobble. With Shift held, you can control the shimmer intervals. (These are drawn on a computer from
+`display.cpp`'s frames with the panel artwork, so the fonts may differ from the
 device's.)
 
 ## Controls
@@ -28,7 +27,7 @@ device's.)
 
 - **Dry** keeps the source in the stock mixer at full send; it does not add
   clean audio to the return.
-- **Mod** drifts the tank's delay lines, by up to 10 ms and up to 2.5 times as fast at full: gentle through its first half, seasick at the top. It defaults to 20%, enough to keep the tank's resonances from singling out a note.
+- **Mod** drifts the tank's delay lines, by up to 10 ms and up to 2.5 times as fast at full. It defaults to 20%, enough to keep the tank's resonances from singling out a note.
 - **Light**'s last 5% at each end turns the other layer fully off, and its
   pitch shifter stops working: the far ends are the lightest settings.
 - **Delay** holds the shimmer back before it reaches the tank; the reverb itself starts at once.
