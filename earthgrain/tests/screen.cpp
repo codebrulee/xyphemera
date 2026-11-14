@@ -5,14 +5,14 @@
 #include <cstdio>
 #include <cstring>
 
-static fragmentedearth::Frame frame;
+static earthgrain::Frame frame;
 
 int main() {
     int failures = 0;
     for (int start = 0; start < 2; ++start)
         for (unsigned mode = 0; mode < 4; ++mode) {
-            fragmentedearth::DisplayState state;
-            fragmentedearth::display_reset(state);
+            earthgrain::DisplayState state;
+            earthgrain::display_reset(state);
             opxy::draw::Input input{};
             input.elapsed = 34;  // 30 frames a second, Q10
             input.track = 14;
@@ -25,7 +25,7 @@ int main() {
                 input.slots[4] = t > 4 && t < 8 ? 0x70000000 : 0;             // Drift
                 input.slots[7] = 0x26666666;                                  // Space 0.3
                 input.shift = f % 90 < 10;
-                fragmentedearth::display(state, input, frame);
+                earthgrain::display(state, input, frame);
                 if (!opxy::draw::valid(frame)) {
                     std::printf("FAIL an invalid frame (mode %u, dust from the start %d, frame %d)\n", mode, start, f);
                     ++failures;
@@ -39,8 +39,8 @@ int main() {
     const Case cases[] = {{2, 0, 0, "cycle", ".25s"}, {2, 0, 0x40000000, "cycle", "2.7s"}, {2, 0, 0x7fffffff, "cycle", "30s"},
                           {2, 1, 0, "cycle", ".5b"}, {2, 1, 0x40000000, "cycle", "8b"}, {2, 1, 0x7fffffff, "cycle", "64b"}, {0, 0, 0x40000000, "shape", "50"}};
     for (const Case& c : cases) {
-        fragmentedearth::DisplayState state;
-        fragmentedearth::display_reset(state);
+        earthgrain::DisplayState state;
+        earthgrain::display_reset(state);
         opxy::draw::Input input{};
         input.elapsed = 34;
         input.track = 14;
@@ -48,7 +48,7 @@ int main() {
         input.choices[0] = static_cast<opxy::u8>(c.mode);
         input.choices[2] = static_cast<opxy::u8>(c.sync);
         input.slots[2] = c.shape;
-        fragmentedearth::display(state, input, frame);
+        earthgrain::display(state, input, frame);
         bool title = false, value = false;
         for (const auto& t : frame.texts) {
             title = title || std::strcmp(t.chars, c.title) == 0;

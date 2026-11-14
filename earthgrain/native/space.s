@@ -1,4 +1,4 @@
-/* fragmentedearth_native_space: native/space.hpp's space_reference on the device, a stage at a
+/* earthgrain_native_space: native/space.hpp's space_reference on the device, a stage at a
    time over the block: down to half rate, the four diffusers, the loop's half-sum, its four
    lines, back to full rate. The lines are circular buffers (B = the words, L = their 16 KB),
    so each read or write is one access, stepping back a word a sample.
@@ -7,9 +7,9 @@
    left +0, right +4, at +8, dry +12, wet +16, gain +20.., damp +36.., last +52, +56. */
 .section .text
 .align 4
-.global _fragmentedearth_native_space
-.type _fragmentedearth_native_space, STT_FUNC
-_fragmentedearth_native_space:
+.global _earthgrain_native_space
+.type _earthgrain_native_space, STT_FUNC
+_earthgrain_native_space:
     [--SP] = (R7:4, P5:3);
     P3 = R0;                    /* the words */
     P4 = R1;                    /* scratch */
@@ -531,4 +531,4 @@ _fragmentedearth_native_space:
     L3 = 0;
     (R7:4, P5:3) = [SP++];
     RTS;
-.size _fragmentedearth_native_space, .-_fragmentedearth_native_space
+.size _earthgrain_native_space, .-_earthgrain_native_space

@@ -1,12 +1,12 @@
-/* fragmentedearth_native_grain: native/grain.hpp's grain_reference on the device.
+/* earthgrain_native_grain: native/grain.hpp's grain_reference on the device.
    R0 the recording (where the window begins), R1 out_left, R2 the GrainJob:
    position +0, rate +4, count +8, left +12, step_left +16, right +20, step_right +24,
    out_right +28, scratch +32. Two passes: read and interpolate into scratch, then mix. */
 .section .text
 .align 4
-.global _fragmentedearth_native_grain
-.type _fragmentedearth_native_grain, STT_FUNC
-_fragmentedearth_native_grain:
+.global _earthgrain_native_grain
+.type _earthgrain_native_grain, STT_FUNC
+_earthgrain_native_grain:
     [--SP] = (R7:4, P5:3);
     P5 = R0;                    /* the recording */
     P4 = R1;                    /* out_left */
@@ -69,4 +69,4 @@ _fragmentedearth_native_grain:
 .Ldone:
     (R7:4, P5:3) = [SP++];
     RTS;
-.size _fragmentedearth_native_grain, .-_fragmentedearth_native_grain
+.size _earthgrain_native_grain, .-_earthgrain_native_grain

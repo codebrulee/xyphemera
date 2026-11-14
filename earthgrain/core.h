@@ -2,8 +2,8 @@
 #include <opxy/effect.hpp>
 #include <opxy/transport.hpp>
 
-// Fragmented Earth: the granular looper.
-namespace fragmentedearth {
+// Earthgrain: the granular looper.
+namespace earthgrain {
 // The whole send buffer (512 KB): the grain pool, then scratch, then the recording.
 const opxy::u32 kBufferWords = opxy::effect_buffer_bytes / 4;
 

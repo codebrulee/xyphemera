@@ -38,5 +38,5 @@ through, or the profiler counts them inactive.
 case by case, and exits with how many cases differ. The simulator lacks the 32 x 32 (T)
 multiply, so both sides use the instruction counter's stand-in multiply: the routine's
 `Rx = Ry * Rz (T)` (alone, or first in a parallel group) becomes the integer one. Everything
-else runs as on the device. `test_grain.cpp` and `test_space.cpp` are Fragmented Earth's.
+else runs as on the device. `test_grain.cpp` and `test_space.cpp` are Earthgrain's.
 Set `OPEN_XY` and `BFIN_RUN` as for blackfin-count; `DEFS=-DTRIALS=60` runs a shorter check.

@@ -6,7 +6,7 @@
 // One grain's stretch of samples (fx.cpp's play(), where the whole stretch lies inside its
 // window and the recording): read with linear interpolation, then mixed into the output at a
 // gain ramping by a step a sample. The device runs native/grain.s.
-namespace fragmentedearth {
+namespace earthgrain {
 struct GrainJob {
     opxy::u32 position;          // Q14 samples into the window; returned where it ends
     opxy::i32 rate;              // Q14 samples a sample
@@ -18,13 +18,13 @@ struct GrainJob {
 };
 }
 
-extern "C" void fragmentedearth_native_grain(const opxy::i16* recording, opxy::i32* out_left, fragmentedearth::GrainJob* job);
+extern "C" void earthgrain_native_grain(const opxy::i16* recording, opxy::i32* out_left, earthgrain::GrainJob* job);
 
-namespace fragmentedearth {
+namespace earthgrain {
 }
 
 
-namespace fragmentedearth {
+namespace earthgrain {
 // A recorded sample back to Q29 (Q23 x 64), so two samples' difference still fits: its
 // mantissa (the top 12 bits) shifted up by its exponent (the low 4) and 6.
 inline opxy::i32 decode(opxy::i16 c) {
@@ -52,6 +52,6 @@ inline void grain_reference(const opxy::i16* recording, opxy::i32* out_left, Gra
     job->position = position;
 }
 inline void grain(const opxy::i16* recording, opxy::i32* out_left, GrainJob* job) {
-    OPXY_NATIVE(fragmentedearth_native_grain, grain_reference)(recording, out_left, job);
+    OPXY_NATIVE(earthgrain_native_grain, grain_reference)(recording, out_left, job);
 }
 }

@@ -3,7 +3,7 @@
 #include "native/space.hpp"
 #include <opxy/q31.hpp>
 
-// Fragmented Earth, a granular looper: a send effect that records what it hears into a
+// Earthgrain, a granular looper: a send effect that records what it hears into a
 // recording about 5.5 s long and plays it back as grains. When the input goes quiet it
 // holds the last phrase (auto-freeze) and the grains keep reading it, so it can drone on
 // its own; playing into it again lets the phrase go.
@@ -16,7 +16,7 @@
 // anywhere in a held phrase) and Stretch (grains laid evenly along a play point that moves
 // slower than time, so the sound slows without changing pitch). Space (a light diffuser) is still to come.
 // A send effect: it returns only the wet.
-namespace fragmentedearth {
+namespace earthgrain {
 namespace {
 using opxy::i16;
 using opxy::i32;
@@ -531,8 +531,8 @@ void spring(State& s, Grain* grains, const opxy::Transport& t, opxy::Parameters 
     // The cycle: free, 0.25 s x 120^shape, up to 30 s; with Sync on tempo, half a beat to 64
     // beats, following the song position while it plays.
     const i32 shape = control(p[kShape]);
-    const bool synced = fragmentedearth::synced(p, t);
-    const u32 half_beat = synced ? fragmentedearth::half_beat(t) : 0;  // samples
+    const bool synced = earthgrain::synced(p, t);
+    const u32 half_beat = synced ? earthgrain::half_beat(t) : 0;  // samples
     const u32 length_octaves = (static_cast<u32>(shape) >> 15) * 6907u / 1000u;  // Q16: 120^shape = 2^(6.907 shape)
     const u32 halves = 1u << choice(shape, 8);                   // the cycle in half beats: 1 to 128
     const u32 cycle = synced ? half_beat * halves
@@ -1119,4 +1119,4 @@ void process(State& state, opxy::Buffer buffer, const opxy::Transport& transport
             right[i] = multiply(right[i], gain);
         }
 }
-}  // namespace fragmentedearth
+}  // namespace earthgrain

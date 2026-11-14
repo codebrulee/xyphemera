@@ -1,6 +1,0 @@
-{
-  "symbol": "fragmentedearth_native_space",
-  "stackBytes": 28,
-  "range": "any block: words 4096 (16 KB aligned to 4), scratch 160 words, at 0..4095",
-  "reference": "fragmentedearth::space_reference (native/space.hpp)"
-}

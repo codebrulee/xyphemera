@@ -3,10 +3,10 @@
 #pragma once
 #include <opxy/types.hpp>
 
-namespace fragmentedearth { namespace panel {
+namespace earthgrain { namespace panel {
 const opxy::u32 kNodes = 494, kTexts = 16, kPalette = 16, kPoints = 64;
-enum Node { kNodeDay = 0, kNodeMeridians = 1, kNodeBars = 4, kNodeDisc = 12, kNodeAxis = 13, kNodeSpecks = 14 };
-const opxy::u32 kMeridians = 3, kSpecks = 480;
+enum Node { kNodeDay = 0, kNodeMeridians = 1, kNodeBars = 4, kNodeDisc = 12, kNodeAxis = 13, kNodeSpecks = 14, kNodeDots = 470 };
+const opxy::u32 kMeridians = 3, kSpecks = 456, kDots = 24;
 const opxy::i32 kAxisHalf = 34;
 const opxy::i32 kCx = 240, kCy = 128, kRadius = 63;
 const opxy::i32 kLeanTenths = 234, kTipTenths = 180;

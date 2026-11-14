@@ -10,7 +10,7 @@ machine's folder:
 import json
 import math
 
-PREFIX = 'fragmentedearth'
+PREFIX = 'earthgrain'
 
 # Geometry, in screen pixels (480 x 220, y down).
 CX, CY, R = 240, 128, 63
@@ -20,19 +20,22 @@ SHADOW = 0.2                     # the share of the globe that is day (a crescen
 POINTS = 64
 
 # Palette: twelve greys (lines and fills), then the night disc and its limb, then night
-# with a bright, middling and dim edge (Slice's lifted piece).
+# with a white, middling and dim edge (Plates' lifted plate, flashing with its slice).
 GREYS = [0x1D, 0x28, 0x32, 0x3C, 0x4B, 0x57, 0x64, 0x7D, 0x96, 0xAF, 0xCD, 0xFF]
 NIGHT, EDGE, EDGE_MID, EDGE_DIM = len(GREYS), len(GREYS) + 1, len(GREYS) + 2, len(GREYS) + 3
 
 # Nodes: the day side and three more outlines (the mutable ones), the header's
-# eight bars, the night disc, the axis (kept, hidden), then the dashes.
+# eight bars, the night disc, the axis (kept, hidden), the dashes, then the dots (grains:
+# Orbit's marks and Satellite's satellites).
 NODE_DAY, NODE_MERIDIANS, MERIDIANS = 0, 1, 3
 NODE_BARS = 4
 NODE_DISC, NODE_AXIS = 12, 13
 NODE_SPECKS = 14
-SPECKS = 480
+SPECKS = 456
+NODE_DOTS = NODE_SPECKS + SPECKS
+DOTS = 24
 AXIS_HALF = 34
-STATE_BYTES = 2532  # sizeof(DisplayState): checked against the compiled type by sdk.py test
+STATE_BYTES = 2556  # sizeof(DisplayState): checked against the compiled type by sdk.py test
 
 
 def num(x):
@@ -71,7 +74,7 @@ def main():
     sz = math.cos(math.pi * (1 - light))
     sun = (math.cos(math.radians(SUN)), math.sin(math.radians(SUN)))
     specks = SPECKS
-    nodes = NODE_SPECKS + specks
+    nodes = NODE_DOTS + DOTS
     texts = 16
 
     out = ['<g id="%s_panel">' % PREFIX]
@@ -108,11 +111,15 @@ def main():
     for i in range(specks):
         out.append(path([(0, -0.3), (-3, -0.3), (-3, 0.3), (0, 0.3)], id='%s_node_%d' % (PREFIX, NODE_SPECKS + i),
                         transform='matrix(1 0 0 1 640 320)', fill='#4B4B4B', stroke='#4B4B4B', stroke_width=0.1))
+    # The dots: discs of radius 2 px, scaled to size (a node's scale is at most 2).
+    for i in range(DOTS):
+        out.append('<circle id="%s_node_%d" transform="matrix(1 0 0 1 640 320)" cx="0" cy="0" r="2" fill="#4B4B4B" stroke="#4B4B4B" stroke-width="0.1"/>'
+                   % (PREFIX, NODE_DOTS + i))
     for i, g in enumerate(GREYS):
         c = '#%02X%02X%02X' % (g, g, g)
         out.append('<circle id="%s_palette_%d" cx="640" cy="0" r="1" fill="%s" stroke="%s" stroke-width="0.25"/>' % (PREFIX, i, c, c))
     out.append('<circle id="%s_palette_%d" cx="640" cy="0" r="1" fill="#000000" stroke="#323232" stroke-width="0.5"/>' % (PREFIX, NIGHT))
-    for entry, edge in ((EDGE, '#CDCDCD'), (EDGE_MID, '#7D7D7D'), (EDGE_DIM, '#4B4B4B')):
+    for entry, edge in ((EDGE, '#FFFFFF'), (EDGE_MID, '#AFAFAF'), (EDGE_DIM, '#646464')):
         out.append('<circle id="%s_palette_%d" cx="640" cy="0" r="1" fill="#000000" stroke="%s" stroke-width="0.8"/>' % (PREFIX, entry, edge))
     out.append('</g>')
     open('panel.svg.fragment', 'w').write('\n'.join(out) + '\n')
@@ -125,11 +132,11 @@ def main():
     w('#pragma once')
     w('#include <opxy/types.hpp>')
     w('')
-    w('namespace fragmentedearth { namespace panel {')
+    w('namespace earthgrain { namespace panel {')
     w('const opxy::u32 kNodes = %d, kTexts = %d, kPalette = %d, kPoints = %d;' % (nodes, texts, len(GREYS) + 4, POINTS))
-    w('enum Node { kNodeDay = %d, kNodeMeridians = %d, kNodeBars = %d, kNodeDisc = %d, kNodeAxis = %d, kNodeSpecks = %d };'
-      % (NODE_DAY, NODE_MERIDIANS, NODE_BARS, NODE_DISC, NODE_AXIS, NODE_SPECKS))
-    w('const opxy::u32 kMeridians = %d, kSpecks = %d;' % (MERIDIANS, specks))
+    w('enum Node { kNodeDay = %d, kNodeMeridians = %d, kNodeBars = %d, kNodeDisc = %d, kNodeAxis = %d, kNodeSpecks = %d, kNodeDots = %d };'
+      % (NODE_DAY, NODE_MERIDIANS, NODE_BARS, NODE_DISC, NODE_AXIS, NODE_SPECKS, NODE_DOTS))
+    w('const opxy::u32 kMeridians = %d, kSpecks = %d, kDots = %d;' % (MERIDIANS, specks, DOTS))
     w('const opxy::i32 kAxisHalf = %d;' % AXIS_HALF)
     w('const opxy::i32 kCx = %d, kCy = %d, kRadius = %d;' % (CX, CY, R))
     w('const opxy::i32 kLeanTenths = %d, kTipTenths = %d;' % (round(LEAN * 10), round(TIP * 10)))
@@ -155,7 +162,7 @@ def main():
     definition['resources']['display'] = {'stateBytes': STATE_BYTES, 'stateAlignment': 4, 'paths': 1 + MERIDIANS, 'points': POINTS,
                                           'nodes': nodes, 'texts': texts, 'palette': len(GREYS) + 4}
     open('definition.json', 'w').write(json.dumps(definition, indent=2) + '\n')
-    print('nodes %d (dashes %d), texts %d, palette %d' % (nodes, specks, texts, len(GREYS) + 4))
+    print('nodes %d (dashes %d, dots %d), texts %d, palette %d' % (nodes, specks, DOTS, texts, len(GREYS) + 4))
 
 
 if __name__ == '__main__':

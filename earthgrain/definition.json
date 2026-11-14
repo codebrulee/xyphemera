@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "id": "fragmentedearth",
-  "name": "Fragmented Earth",
+  "id": "earthgrain",
+  "name": "Earthgrain",
   "press": "page",
   "parameters": [
     {
@@ -110,10 +110,10 @@
       "mapping": {
         "kind": "enum",
         "labels": [
-          "cloud",
-          "stretch",
-          "spring",
-          "slice"
+          "weather",
+          "satellite",
+          "orbit",
+          "plates"
         ]
       }
     },
@@ -173,7 +173,7 @@
     "bufferBytes": 524288,
     "transport": 1,
     "display": {
-      "stateBytes": 2532,
+      "stateBytes": 2556,
       "stateAlignment": 4,
       "paths": 4,
       "points": 64,

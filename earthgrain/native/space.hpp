@@ -5,7 +5,7 @@
 
 // Space's block (fx.cpp's space(), once it is set up): down to half rate, two diffusers each
 // side, the loop's four lines and back to full rate. The device runs native/space.s.
-namespace fragmentedearth {
+namespace earthgrain {
 // Its eight lines share 4096 words: one position turns through them all, each line writing at
 // its own start and reading its own length further on. (In samples at half rate.)
 const opxy::u32 kSpaceWords = 4096;
@@ -27,9 +27,9 @@ struct SpaceJob {
 };
 }
 
-extern "C" void fragmentedearth_native_space(opxy::i32* words, opxy::i32* scratch, fragmentedearth::SpaceJob* job);
+extern "C" void earthgrain_native_space(opxy::i32* words, opxy::i32* scratch, earthgrain::SpaceJob* job);
 
-namespace fragmentedearth {
+namespace earthgrain {
 inline opxy::i32 space_limit(opxy::i32 x) { return x > kSpaceMost ? kSpaceMost : x < -kSpaceMost ? -kSpaceMost : x; }
 // One diffuser (an allpass of gain 0.625) for one sample, its line at `k`, position m.
 inline opxy::i32 space_diffuse(opxy::i32* words, opxy::u32 m, opxy::u32 k, opxy::i32 in) {
@@ -91,6 +91,6 @@ inline void space_reference(opxy::i32* words, opxy::i32* scratch, SpaceJob* job)
     job->last[1] = last_right;
 }
 inline void space_block(opxy::i32* words, opxy::i32* scratch, SpaceJob* job) {
-    OPXY_NATIVE(fragmentedearth_native_space, space_reference)(words, scratch, job);
+    OPXY_NATIVE(earthgrain_native_space, space_reference)(words, scratch, job);
 }
 }

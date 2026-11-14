@@ -1,16 +1,19 @@
 #include "display.h"
 #include "panel.h"
 
-namespace fragmentedearth {
-// Earthshine's globe among fixed stars, drawn for each mode as it plays:
-//   Cloud:   weather. Each grain is a pressure system; the isobars are their contours.
-//   Stretch: a ground track. The recording runs along a path scanning back and forth
-//            across the globe; the play point is where two scanlines cross.
-//   Spring:  a moon on an orbit. Its distance is the gap between grains; each grain
-//            leaves a caret on the orbit.
-//   Slice:   the globe cut into pieces; each slice lifts one out.
-// The lines are drawn with short dashes (480 nodes) and four outlines reshaped each
-// frame. The designs are mockups/fragmented-spring.html's.
+namespace earthgrain {
+// Earthshine's globe among fixed stars, drawn for each mode as it plays (the screens'
+// names, then the effect's modes):
+//   Weather (Cloud):     each grain is a pressure system; the isobars are their contours,
+//                        flashing at a system's heart while its grain sounds.
+//   Satellite (Stretch): the Earth's turn is the recording's time; four satellites, one
+//                        for each grain voice, fly over it at what the stretch is.
+//   Orbit (Spring):      a moon on an orbit. Its distance is the gap between grains; each
+//                        grain leaves a dot on the orbit.
+//   Plates (Slice):      the globe cut into plates; each slice lifts one out.
+// A grain is drawn the same way wherever it is a point: a dot that grows and brightens with
+// its envelope. The lines are short dashes (456 nodes), the dots 24 discs, and four outlines
+// are reshaped each frame. The designs are mockups/fragmented-spring.html's.
 //
 // The screen sees only the controls, not the audio: the grains it shows are
 // imagined from the controls with each mode's own timing, not the effect's own.
@@ -261,6 +264,7 @@ Globe globe(const DisplayState& state, i32 cx, i32 cy, i32 r, i32 drift) {
 struct Ink {
     Frame& frame;
     u32 used;
+    u32 dots;
 };
 void dash_line(Ink& ink, Point a, Point b, i32 level) {
     const i32 dx = b.x - a.x, dy = b.y - a.y;
@@ -276,32 +280,21 @@ void dash_line(Ink& ink, Point a, Point b, i32 level) {
         turn(ink.frame, node, t);
     }
 }
-void dot(Ink& ink, Point p, i32 level) {
-    if (ink.used >= kSpecks) return;
-    const u32 node = kNodeSpecks + ink.used++;
-    place(ink.frame, node, p.x + 512, p.y, 341, grey(level), fill_and_stroke);
+// A grain as the screens draw it: a filled dot, `radius` Q10 px.
+void grain_dot(Ink& ink, Point p, i32 radius, i32 level) {
+    if (ink.dots >= kDots) return;
+    place(ink.frame, kNodeDots + ink.dots++, p.x, p.y, radius / 2, grey(level), fill_and_stroke);  // (the artwork's disc is 2 px)
 }
+// A grain's dot at its envelope e (Q15): 1.3 px and grey 5/15 at rest, up to 2.5 px and white.
+void flash_dot(Ink& ink, Point p, i32 e) { grain_dot(ink, p, 1331 + mul(1229, e), 85 + mul(170, e)); }
 void finish(Ink& ink) {
     for (u32 i = ink.used; i < kSpecks; ++i) hide(ink.frame, kNodeSpecks + i);
+    for (u32 i = ink.dots; i < kDots; ++i) hide(ink.frame, kNodeDots + i);
 }
 
 u32 next_key(DisplayState& state) {
     state.key = (state.key + 1) & 0x3fffffff;
     return 0x40000000u | state.key;
-}
-// A thin outline along 32 points (Q10 px), `half` either side, relative to (ox, oy).
-void ribbon(Frame::path_type& path, const Point (&c)[32], i32 ox, i32 oy, i32 half) {
-    const i32 limit = path_extent * unit;
-    for (u32 k = 0; k < 32; ++k) {
-        const Point& a = c[k ? k - 1 : 0];
-        const Point& b = c[k < 31 ? k + 1 : 31];
-        const i32 tx = b.x - a.x, ty = b.y - a.y;
-        i32 len = length(tx, ty);
-        if (len < 16) len = 16;
-        const i32 nx = -ty * (half >> 4) / (len >> 4 ? len >> 4 : 1), ny = tx * (half >> 4) / (len >> 4 ? len >> 4 : 1);
-        path.points[k] = Point{clamp(c[k].x + nx - ox, -limit, limit), clamp(c[k].y + ny - oy, -limit, limit)};
-        path.points[63 - k] = Point{clamp(c[k].x - nx - ox, -limit, limit), clamp(c[k].y - ny - oy, -limit, limit)};
-    }
 }
 // A filled circle of radius r (Q10 px) about the node's origin.
 void disc_path(Frame::path_type& path, i32 r) {
@@ -323,6 +316,30 @@ void draw_globe(DisplayState& state, Frame& frame, i32 cx, i32 cy, i32 r) {
 }
 void hide_path(Frame& frame, u32 node) { hide(frame, node); }
 
+// The globe's three meridians, their facing halves as thin ribbons (Earthshine's), the
+// globe turned by `spin` (tenths).
+void draw_meridians(Frame& frame, i32 spin) {
+    View view;
+    view.at(spin);
+    const i32 pixel = 1024 / kRadius;
+    for (u32 m = 0; m < kMeridians; ++m) {
+        const Circle c = circle(view, 600 * static_cast<i32>(m));
+        i32 len = static_cast<i32>(root(static_cast<u32>(c.az * c.az + c.bz * c.bz)));
+        if (len < 1) len = 1;
+        const i32 lx = (c.bz * c.ax - c.az * c.bx) / len, ly = (c.bz * c.ay - c.az * c.by) / len;
+        const i32 fx = (c.az * c.ax + c.bz * c.bx) / len, fy = (c.az * c.ay + c.bz * c.by) / len;
+        const i32 nlx = notched(lx, pixel), nly = notched(ly, pixel), nfx = notched(fx, pixel), nfy = notched(fy, pixel);
+        const u32 key = 0x20000000u | (1 + (static_cast<u32>(nlx + 2048) << 13 ^ static_cast<u32>(nly + 2048) ^
+                                            static_cast<u32>(nfx + 2048) << 19 ^ static_cast<u32>(nfy + 2048) << 6));
+        Frame::path_type& path = frame.paths[kNodeMeridians + m];
+        if (path.key != key) {
+            path.key = key;
+            meridian(path, kRadius, nlx, nly, nfx, nfy);
+        }
+        place(frame, kNodeMeridians + m, px(kCx), px(kCy), unit, grey(kMeridianGrey), fill_and_stroke);
+    }
+}
+
 // Motion's shape of a cycle at `phase` (Q15): out and back, only out, only in; eased.
 i32 stretch_at(u32 motion, i32 phase) {
     const u32 shape_of = motion >> 1;
@@ -334,14 +351,13 @@ i32 two_to(i32 f) { return 1024 + (f * (672 + (f * 352 >> 10)) >> 10); }
 // A grain's length, Q10 s.
 i32 grain_length(i32 size) { return curve(kSizeMs, size) * 1024 / 1000; }
 
-// ---- Spring: a moon on an orbit ----
+// ---- Orbit (the effect's Spring): a moon on an orbit ----
 // The moon's distance from the globe is the gap between grains: flung out as the cycle
 // expands, pulled back in as it contracts, sweeping round at 1/r^2 as an orbit does, one turn
 // a cycle (expand and contract run back along the route at the start of each). Droop tips
-// the far side down or up; Drift makes the moon wander. Each grain leaves a caret on the
-// orbit where it began, pointing the way the moon was going: glowing with its envelope while
-// it sounds, then fading over a cycle. Timing as the effect's Spring; on tempo it assumes
-// 120 BPM (the screen is not told the tempo).
+// the far side down or up; Drift makes the moon wander. Each grain leaves a dot on the orbit
+// where it began, glowing with its envelope while it sounds, then fading over a cycle. Timing
+// as the effect's Spring; on tempo it assumes 120 BPM (the screen is not told the tempo).
 const i32 kSpringX = 240, kSpringY = 126, kSpringR = 44;
 // The cycle, Q10 s: free 0.25 s x 120^shape (to 30 s); on tempo a half beat (0.25 s at
 // 120 BPM) x 2^(8 shape, whole, at most 7: 64 beats).
@@ -477,7 +493,7 @@ void spring_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt
     const auto under_moon = [&](Point p) { return moon_shown && length(p.x - moon.p.x, p.y - moon.p.y) < px(9); };
 
     draw_globe(state, frame, kSpringX, kSpringY, kSpringR);
-    Ink ink{frame, 0};
+    Ink ink{frame, 0, 0};
     // The meridians: three, turning slowly (0.4 rad a second), their facing halves.
     const i32 spin = still ? 0 : angle_of(now, 229);
     for (i32 j = 0; j < 3; ++j) {
@@ -501,7 +517,7 @@ void spring_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt
         if (!o.hidden(m) && !under_moon(mid)) dash_line(ink, prev.p, s.p, s.behind ? 0x22 : 0x33);
         prev = s;
     }
-    // The carets: the newest 24, none within 6.5 px of a newer one.
+    // The dots: the newest 24, none within 6.5 px of a newer one.
     const i32 keep = cycle > unit ? cycle : unit;
     Point placed[24];
     u32 shown = 0;
@@ -522,20 +538,10 @@ void spring_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt
         if (crowd > faded) faded = crowd;
         if (x >= kOne && faded >= kOne) continue;
         if (o.hidden(start) || under_moon(start.p)) continue;
-        const i32 k = x < kOne ? 7 + (8 * spring_envelope(x) >> 15) : (7 - (5 * faded >> 15) > 2 ? 7 - (5 * faded >> 15) : 2);
-        // Pointing the way the moon was going (back, in a run-back).
-        const i32 dir = route_at(motion, (m.phase + 131) & 65535, cycle) >= u0 ? 1 : -1;
-        const Orbit::Spot a = o.at(u0 - 262 > 0 ? u0 - 262 : 0, 0, 0), b = o.at(u0 + 262 < 65535 ? u0 + 262 : 65535, 0, 0);
-        i32 tx = (b.p.x - a.p.x) * dir, ty = (b.p.y - a.p.y) * dir;
-        const i32 tl = length(tx, ty);
-        if (tl < 16) continue;
-        tx = tx * 1024 / tl;
-        ty = ty * 1024 / tl;
-        const Point tip{start.p.x + 2 * tx, start.p.y + 2 * ty};
-        const Point w1{tip.x - 4 * ((tx * 749 - ty * 698) >> 10), tip.y - 4 * ((ty * 749 + tx * 698) >> 10)};
-        const Point w2{tip.x - 4 * ((tx * 749 + ty * 698) >> 10), tip.y - 4 * ((ty * 749 - tx * 698) >> 10)};
-        dash_line(ink, w1, tip, k * 17);
-        dash_line(ink, tip, w2, k * 17);
+        // A dot, as every screen draws a grain: while it sounds it grows and brightens with its
+        // envelope; after, it fades from mid grey over a cycle (or as newer ones crowd it out).
+        if (x < kOne) flash_dot(ink, start.p, spring_envelope(x));
+        else grain_dot(ink, start.p, 1331, (7 - (5 * faded >> 15) > 2 ? 7 - (5 * faded >> 15) : 2) * 17);
     }
     finish(ink);
     // The moon: a small globe lit by the same sun, fuller in front of the Earth, a crescent behind.
@@ -554,30 +560,34 @@ void spring_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt
     }
 }
 
-// ---- Stretch: a ground track ----
-// The recording runs along a path across the globe's face, scanning back and forth (68
-// degrees either side), each sweep drifting up or down like a satellite's ground track. The
-// pen, the newest moment, writes along it at real time; the play point follows at Activity^2
-// x normal speed and is where two scanlines cross: its meridian and its parallel. When it
-// falls 3 s behind it jumps to the pen, running forward along the path to it over 0.45 s.
-// Behind the crossing a tail of what it has just played, as long as Size sets (0.3 s to
-// about 2 s), fading away. (No notes or holds: the screen can't see the sound.)
-struct Track {
-    Globe g;
-    // A moment (Q10 s) on the path.
-    Dir at(i32 tau) const {
-        const u32 t = static_cast<u32>(tau + (1 << 26));  // kept positive
-        const i32 f = angle_of(t, 627);                     // a sweep there and back in 5.74 s
-        const i32 lon = 680 * fs(f) >> 10;
-        const i32 lat = (250 * fs(lon) >> 10) + (300 * fs(angle_of(t, 232)) >> 10);
-        return toward(lat, lon);
-    }
-};
+// ---- Satellite (the effect's Stretch): the Earth's turn is time ----
+// The globe turns with the play point, 120 degrees for each second of the recording: slowed
+// time is a slowly turning Earth, still at Activity 0. A sight fixed 25 degrees north on the
+// meridian facing us is now, the play point. Four satellites, one for each grain voice (a
+// grain starts on each in turn, a quarter of a grain apart), fly over the turning ground at
+// what the stretch is, (1 - Activity^2) of the ground's speed: at full Activity they hang over
+// the sight; lower, they circle the globe, faster the more the sound is stretched. Each flies
+// a great circle through the sight (as seen from its height, so it passes over it on the
+// screen), tilted its own way, and trails the way it has come (as far as it flew over 0.4 s to
+// 2.4 s, by Size). Each flashes with its voice's grain (Shape), flies as high as the pitch, and
+// Droop bends its orbit south as the pitch falls (north as it rises), most on the far side.
+// Drift spreads them apart; their speeds differ a little, so they drift in and out of step.
+// When the play point falls 3 s behind it jumps to now, the Earth spinning forward to it over
+// 0.45 s. (The screen can't see notes or holds.)
+struct Vec { i32 x, y, z; };
+Vec unit_vec(i32 x, i32 y, i32 z) {
+    i32 len = static_cast<i32>(root(static_cast<u32>(x * x + y * y + z * z)));
+    if (len < 1) len = 1;
+    return Vec{x * 1024 / len, y * 1024 / len, z * 1024 / len};
+}
 void stretch_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt, bool still) {
     const i32 activity = q15(input.slots[kActivity]), size = q15(input.slots[kSize]);
-    const i32 drift = q15(input.slots[kDrift]);
+    const i32 shape = q15(input.slots[kShape]), drift = q15(input.slots[kDrift]);
+    const i32 droop = q15(input.slots[kDroop]);
+    const u32 motion = input.choices[kChoiceMotion] < 6 ? input.choices[kChoiceMotion] : 0;
     const u32 now = state.now;
     const i32 len = grain_length(size);
+    const i32 still_share = kOne - mul(activity, activity);  // the stretch: how far the satellites outrun the ground
     if (!still) {
         state.write += dt;
         state.head += dt * mul(activity, activity) >> 15;
@@ -588,6 +598,14 @@ void stretch_screen(DisplayState& state, const Input& input, Frame& frame, i32 d
             state.leaping = 1;
         }
         if (lag > 3 * unit || lag < least) state.head = state.write - least;
+        // The grains: one on each voice in turn, a quarter of a grain apart.
+        state.sat_phase += static_cast<u32>((dt << 16) / (len > 0 ? len : 1));
+        // Each satellite's run over the ground (Q4 tenths), at its own speed (6% apart).
+        const i32 speed = mul(1200 * 16, still_share);  // Q4 tenths a second
+        for (i32 k = 0; k < 4; ++k) {
+            const i32 own = speed + (speed * (2 * k - 3) * 31 >> 11);
+            state.sat_run[k] = (state.sat_run[k] + (own * dt >> 10)) % (3600 * 16);
+        }
     }
     if (state.leaping) {
         const i32 k = static_cast<i32>(now - state.leap_at) * 32768 / 461;
@@ -596,57 +614,88 @@ void stretch_screen(DisplayState& state, const Input& input, Frame& frame, i32 d
     }
     if (!state.leaping) state.shown = state.head;
 
-    Track track{globe(state, kCx, kCy, kRadius, drift)};
+    const Globe g = globe(state, kCx, kCy, kRadius, drift);
     draw_globe(state, frame, kCx, kCy, kRadius);
-    Ink ink{frame, 0};
-    // The path: the tail behind the crossing, then on to the pen.
-    const i32 frac = clamp(curve(kSizeMs, size) * 32768 / 1200, 0, kOne);
-    const i32 tail = 154 + (2048 * static_cast<i32>(root(static_cast<u32>(frac) << 15)) >> 15);
-    const i32 t0 = state.shown - tail, t1 = state.write;
-    Point prev = track.g.at(track.at(t0));
-    for (i32 tau = t0 + 31; tau <= t1 + 30; tau += 31) {
-        const i32 t = tau < t1 ? tau : t1;
-        const Dir d = track.at(t);
-        const Point p = track.g.at(d);
-        const i32 fade = t < state.shown ? clamp((t - t0) * 32768 / (tail > 0 ? tail : 1), 0, kOne) : kOne;
-        const i32 level = (5 + (track.g.lit(d) ? 2 : 0)) * 17 * fade >> 15;
-        if (level >= 8) dash_line(ink, prev, p, level);
-        prev = p;
-        if (t == t1) break;
+    // The globe turns with the play point (westward as time runs on, so the ground passes under the sight).
+    draw_meridians(frame, still ? 0 : 3600 - angle_of(static_cast<u32>(state.shown + (1 << 26)), 1200));
+    Ink ink{frame, 0, 0};
+    // The sight: four short ticks along the meridian and the parallel, 5 to 14 degrees out
+    // from the play point, with a gap where they would cross.
+    const i32 north = 250;
+    for (i32 side = 0; side < 4; ++side) {
+        const i32 dl = side == 0 ? 1 : side == 1 ? -1 : 0, dn = side == 2 ? 1 : side == 3 ? -1 : 0;
+        Point prev{0, 0};
+        for (i32 i = 0; i <= 4; ++i) {
+            const i32 r = 50 + 90 * i / 4;
+            const Point p = g.at(toward(north + dl * r, dn * (r * 1130 >> 10)));
+            if (i) dash_line(ink, prev, p, 0x96);
+            prev = p;
+        }
     }
-    dot(ink, track.g.at(track.at(state.write)), 0x99);
+    // The pitch: Droop's sway, shaped by Motion (Q15 octaves, + up).
+    const i32 bend = mul(droop, stretch_at(motion, state.sway)) * (motion & 1 ? 1 : -1);
+    // The trail: as far as it flew over 0.4 s to 2.4 s (Size), at most 300 degrees.
+    i32 trail = mul(mul(1200, still_share), 13107 + 2 * size);
+    if (trail > 3000) trail = 3000;
+    const i32 height = kRadius * (1208 + (123 * bend >> 15));  // Q10 px: 1.18 to 1.30 radii
+    // Where on the unit sphere passes over the sight as seen from that height.
+    const i32 up = clamp(433 * 1024 / (1208 + (123 * bend >> 15)), 0, 1013);
+    const Vec p0{0, up, static_cast<i32>(root(static_cast<u32>(1048576 - up * up)))};
+    const Vec n0{0, p0.z, -p0.y};
+    const i32 sag = 1229 * bend >> 15;  // Q10: 1.2 x the bend in octaves
+    const auto seen = [&](const Vec& d) {
+        const i32 sx = (d.x * g.cl + d.y * g.sl) >> 10, sy = (d.x * g.sl - d.y * g.cl) >> 10;
+        return Point{g.x + (height * sx >> 10), g.y + (height * sy >> 10)};
+    };
+    const auto hidden = [&](const Vec& d) {
+        if (d.z >= 0) return false;
+        const i32 across = static_cast<i32>(root(static_cast<u32>(d.x * d.x + d.y * d.y)));  // Q10
+        return (across * height >> 10) < px(kRadius);
+    };
+    for (i32 k = 0; k < 4; ++k) {
+        const i32 tilt = (2 * k - 3) * 80;  // (k - 1.5) x 16 degrees
+        const Vec d0{fc(tilt), fs(tilt) * n0.y >> 10, fs(tilt) * n0.z >> 10};
+        const Vec nn{(p0.y * d0.z - p0.z * d0.y) >> 10, (p0.z * d0.x - p0.x * d0.z) >> 10, (p0.x * d0.y - p0.y * d0.x) >> 10};
+        const auto at = [&](i32 ang) {
+            const i32 c = fc(ang), sn = fs(ang), o = sag * (1024 - c) >> 11;
+            return unit_vec((p0.x * c + d0.x * sn + nn.x * o) >> 10, (p0.y * c + d0.y * sn + nn.y * o) >> 10,
+                            (p0.z * c + d0.z * sn + nn.z * o) >> 10);
+        };
+        const i32 lead = (2 * k - 3) * (20 + (180 * drift >> 15)) + (state.sat_run[k] >> 4);
+        const u32 xk = (state.sat_phase - static_cast<u32>(k) * 16384u) & 65535u;
+        const i32 e = envelope(static_cast<i32>(xk >> 1), shape);
+        // Its trail, fading back.
+        if (trail > 10) {
+            Vec prev_d = at(lead - trail);
+            Point prev = seen(prev_d);
+            bool prev_hidden = hidden(prev_d);
+            for (i32 i = 1; i <= 24; ++i) {
+                const Vec d = at(lead - trail + trail * i / 24);
+                const Point p = seen(d);
+                const bool h = hidden(d);
+                const i32 level = ((24 + 5 * i) * (16384 + e / 2) >> 15) * 17 / 24;  // (1 + 5 i/24) x (0.5 + 0.5 e) greys
+                if (!h && !prev_hidden && level >= 17) dash_line(ink, prev, p, level);
+                prev = p;
+                prev_hidden = h;
+            }
+        }
+        const Vec d = at(lead);
+        if (!hidden(d)) flash_dot(ink, seen(d), e);
+    }
     finish(ink);
-    // The scanlines: the play point's meridian and parallel, in the globe's own line grey.
-    const Dir here = track.at(state.shown);
-    const i32 lat = here.y >= 1024 ? 900 : here.y <= -1024 ? -900 : static_cast<i32>(here.y * 900 / 1024);  // (near enough)
-    // Its longitude and latitude, from the path directly.
-    const u32 tt = static_cast<u32>(state.shown + (1 << 26));
-    const i32 plon = 680 * fs(angle_of(tt, 627)) >> 10;
-    const i32 plat = (250 * fs(plon) >> 10) + (300 * fs(angle_of(tt, 232)) >> 10);
-    (void)lat;
-    Point m[32], q[32];
-    for (i32 k = 0; k < 32; ++k) {
-        m[k] = track.g.at(toward(-900 + 1800 * k / 31, plon));
-        q[k] = track.g.at(toward(plat, -900 + 1800 * k / 31));
-    }
-    Frame::path_type& meridian_path = frame.paths[kNodeMeridians];
-    meridian_path.key = next_key(state);
-    ribbon(meridian_path, m, track.g.x, track.g.y, 360);
-    place(frame, kNodeMeridians, track.g.x, track.g.y, unit, grey(0x3C), fill_and_stroke);
-    Frame::path_type& parallel = frame.paths[kNodeMeridians + 1];
-    parallel.key = next_key(state);
-    ribbon(parallel, q, track.g.x, track.g.y, 360);
-    place(frame, kNodeMeridians + 1, track.g.x, track.g.y, unit, grey(0x3C), fill_and_stroke);
-    hide_path(frame, kNodeMeridians + 2);
 }
 
-// ---- Cloud: weather ----
-// Each grain is a pressure system: across, its place in the stereo field; up and down, how
-// far back in the recording it came from and its pitch (Droop's sway sweeps the weather north
-// or south). It rises with the grain's envelope and lingers as it drifts east; Shape sets its
-// character (plucks: quick, compact, strong; swells: slow, broad, soft), Size its reach. The
-// isobars are the contours of them all over a slowly changing background; brighter where
-// higher and over the day side. Three meridians turn slowly beneath.
+// ---- Weather (the effect's Cloud) ----
+// Each grain is a pressure system: across, its place in the stereo field (5 degrees either way
+// at Drift 0, 80 at full); up and down, how far back in the recording it came from (4 to 65
+// degrees, by Drift) and its pitch (60 degrees an octave: Droop's sway sweeps the weather north
+// or south). It rises and lingers as it drifts east; Shape sets its character (plucks: sudden,
+// compact, strong, gone in 0.15 s; swells: building over 0.8 s, broad, soft, lingering over a
+// second), Size its reach (4 to 48 degrees). The isobars are the contours of them all over a
+// faint, slowly changing background. While a grain sounds, the isobars at its system's heart
+// flash with its envelope, as the dots do on the other screens. Over the night they are dim
+// grey (higher ones a little brighter); over the day side's grey, light enough to stand out.
+// Three meridians turn slowly beneath.
 const i32 kGrid = 20;
 void cloud_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt, bool still) {
     const i32 activity = q15(input.slots[kActivity]), size = q15(input.slots[kSize]);
@@ -667,8 +716,8 @@ void cloud_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt,
             System& s = state.systems[state.systems_next];
             state.systems_next = (state.systems_next + 1) % 16;
             const i32 back = static_cast<i32>(r & 32767), pan = static_cast<i32>((r >> 15) & 65535) - 32768;
-            s.lat = static_cast<opxy::i16>(clamp(((2 * back - kOne) * (250 + (350 * drift >> 15)) >> 15) + (bend * 600 >> 15), -800, 800));
-            s.lon = static_cast<opxy::i16>(pan * (350 + (450 * drift >> 15)) >> 15);
+            s.lat = static_cast<opxy::i16>(clamp(((2 * back - kOne) * (40 + (610 * drift >> 15)) >> 15) + (bend * 600 >> 15), -850, 850));
+            s.lon = static_cast<opxy::i16>(pan * (50 + (750 * drift >> 15)) >> 15);
             s.born = now;
             s.length = static_cast<u16>(clamp(grain_length(size), 1, 65535));
             const u32 r2 = next(state.random);
@@ -678,12 +727,12 @@ void cloud_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt,
     }
 
     // Each system now: its centre (Q4 px from the globe's), strength (Q15) and reach.
-    struct Live { i32 x, y, w, reach, per_reach, c, s, el, per_el; };
+    struct Live { i32 x, y, w, reach, per_reach, c, s, el, per_el, e; };
     Live live[12];
     u32 count = 0;
-    const i32 rise = 20 + mul(614, mul(shape, shape));               // Q10 s
-    const i32 lasting = 307 + (512 * shape >> 15);                    // Q10 s: 0.3 + 0.5 shape
-    const i32 strength = 49152 - mul(22938, shape);                   // Q15: 1.5 - 0.7 shape
+    const i32 rise = 10 + mul(819, mul(shape, shape));               // Q10 s: 0.01 + 0.8 shape^2
+    const i32 lasting = 154 + mul(1229, shape);                       // Q10 s: 0.15 + 1.2 shape
+    const i32 strength = 58982 - mul(36045, shape);                   // Q15: 1.8 - 1.1 shape
     for (const System& s : state.systems) {
         if (!s.length || count >= 12) continue;
         const i32 age = static_cast<i32>(now - s.born);
@@ -695,11 +744,12 @@ void cloud_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt,
         if (d.z < 0) continue;
         const Point p = g.at(d);
         const i32 frac = clamp(s.length * 1000 / 1024 * 32768 / 1200, 0, kOne);
-        const i32 reach = mul((16 << 4) + (16 << 4) * static_cast<i32>(root(static_cast<u32>(frac) << 15)) / 32768, 19661 + mul(29491, shape));  // Q4 degrees
+        const i32 reach = mul((4 << 4) + (44 << 4) * static_cast<i32>(root(static_cast<u32>(frac) << 15)) / 32768, 22938 + mul(19661, shape));  // Q4 degrees: (4 + 44 sqrt(length / 1.2 s)) x (0.7 + 0.6 shape)
         const i32 reach_px = reach * 1100 >> 10;                       // Q4 px (63 px a radian)
         const i32 rp = reach_px > 16 ? reach_px : 16;
+        const i32 e = age < s.length ? envelope((age << 15) / s.length, shape) : 0;  // its grain, sounding
         live[count++] = Live{(p.x - g.x) >> 6, (p.y - g.y) >> 6, w, rp, (1 << 20) / rp,
-                             fc(s.tilt), fs(s.tilt), s.stretch, (1 << 20) / s.stretch};
+                             fc(s.tilt), fs(s.tilt), s.stretch, (1 << 20) / s.stretch, e};
     }
 
     // The field over a grid across the disc (5.25 px), Q12.
@@ -722,8 +772,9 @@ void cloud_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt,
                 y = y * inside_q4 / rr;
             }
             const i32 u = x * 1040 >> 10, w = -y * 1040 >> 10;  // Q10 of the radius (1/63/16), y up
-            field[j * (kGrid + 1) + i] = 2048 + ((901 * fs(((u * 802 + w * 631) >> 10) + t1) + 614 * fs(((w * 1318 - u * 917) >> 10) - t2 + 630) +
-                                                 328 * fs(((u * 2120 + w * 1662) >> 10) + t3 + 1146)) >> 10);
+            // (Faint, 40% of the 0.22 / 0.15 / 0.08 it was: the grains' systems are what matters.)
+            field[j * (kGrid + 1) + i] = 2048 + ((360 * fs(((u * 802 + w * 631) >> 10) + t1) + 246 * fs(((w * 1318 - u * 917) >> 10) - t2 + 630) +
+                                                 131 * fs(((u * 2120 + w * 1662) >> 10) + t3 + 1146)) >> 10);
         }
     // Then each system, over the grid points within three of its reaches (stretched).
     for (u32 k = 0; k < count; ++k) {
@@ -749,38 +800,17 @@ void cloud_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt,
 
     draw_globe(state, frame, kCx, kCy, kRadius);
     // The meridians beneath, turning slowly (Earthshine's).
-    {
-        View view;
-        view.at(still ? 0 : angle_of(now, 229));
-        const i32 pixel = 1024 / kRadius;
-        for (u32 m = 0; m < kMeridians; ++m) {
-            const Circle c = circle(view, 600 * static_cast<i32>(m));
-            i32 len = static_cast<i32>(root(static_cast<u32>(c.az * c.az + c.bz * c.bz)));
-            if (len < 1) len = 1;
-            const i32 lx = (c.bz * c.ax - c.az * c.bx) / len, ly = (c.bz * c.ay - c.az * c.by) / len;
-            const i32 fx = (c.az * c.ax + c.bz * c.bx) / len, fy = (c.az * c.ay + c.bz * c.by) / len;
-            const i32 nlx = notched(lx, pixel), nly = notched(ly, pixel), nfx = notched(fx, pixel), nfy = notched(fy, pixel);
-            const u32 key = 0x20000000u | (1 + (static_cast<u32>(nlx + 2048) << 13 ^ static_cast<u32>(nly + 2048) ^
-                                                static_cast<u32>(nfx + 2048) << 19 ^ static_cast<u32>(nfy + 2048) << 6));
-            Frame::path_type& path = frame.paths[kNodeMeridians + m];
-            if (path.key != key) {
-                path.key = key;
-                meridian(path, kRadius, nlx, nly, nfx, nfy);
-            }
-            place(frame, kNodeMeridians + m, px(kCx), px(kCy), unit, grey(kMeridianGrey), fill_and_stroke);
-        }
-    }
+    draw_meridians(frame, still ? 0 : angle_of(now, 229));
 
     // The isobars: every 0.15 from 0.12 up through the highest (at most 8 levels, spaced
     // wider when systems pile up), by marching squares.
     if (compute) return;
-    Ink ink{frame, 0};
+    Ink ink{frame, 0, 0};
     const i32 spacing = (top - 491) / 8 > 614 ? (top - 491) / 8 : 614;
     const i32 inside = kRadius * 16;
     for (i32 level = 491; level < top && ink.used < kSpecks; level += spacing) {
-        const i32 high = level > 4096 ? level - 4096 : 0;  // Q12 above 1
-        const i32 bright_lit = (5 + (8 * high >> 12) < 13 ? 5 + (8 * high >> 12) : 13) * 17;
-        const i32 bright_dark = (3 + (5 * high >> 12) < 8 ? 3 + (5 * high >> 12) : 8) * 17;
+        const i32 high = clamp((level - 4096) << 3, 0, kOne);  // Q15: how far above 1, up to 1
+        const i32 dark = 51 + (34 * high >> 15);                // greys 3 to 5 (x 17)
         for (i32 j = 0; j < kGrid; ++j)
             for (i32 i = 0; i < kGrid; ++i) {
                 const i32 f00 = field[j * (kGrid + 1) + i], f10 = field[j * (kGrid + 1) + i + 1];
@@ -804,33 +834,54 @@ void cloud_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt,
                     const i32 mx = (e[k].x + e[k + 1].x) / 2, my = (e[k].y + e[k + 1].y) / 2;
                     const i32 q = mx * mx + my * my;
                     if (q > inside * inside) continue;  // on the globe only
-                    // Lit where X ux + Y uy > -Z sz (sz < 0): compared squared, without a root.
+                    // Lit on the day side's own edge (the terminator's half ellipse): with p toward the
+                    // sun and w across it, p > -sz sqrt(1 - w^2) (sz < 0), compared squared.
                     const i32 X = mx * 1040 >> 10, Y = -my * 1040 >> 10;  // Q10 of the radius
-                    const i32 side = (X * kSunX + Y * kSunY) >> 10;
-                    const i32 zz = 1048576 - X * X - Y * Y;
-                    const bool lit = side > 0 && side * side > (zz >> 10) * (kSunNear * kSunNear >> 10);
+                    const i32 side = (X * kSunX + Y * kSunY) >> 10, across = (Y * kSunX - X * kSunY) >> 10;
+                    const i32 ww = 1048576 - across * across;
+                    const bool lit = side > 0 && side * side > (ww >> 10) * (kSunNear * kSunNear >> 10);
+                    // The flash: how near the heart of a system whose grain sounds, by its envelope.
+                    i32 flash = 0;
+                    for (u32 n2 = 0; n2 < count; ++n2) {
+                        const Live& s = live[n2];
+                        if (s.e <= 0) continue;
+                        const i32 dx = mx - s.x, dy = my - s.y;
+                        const i32 a = (dx * s.c + dy * s.s) >> 10, b = (-dx * s.s + dy * s.c) >> 10;
+                        const i32 an = a * s.per_reach >> 10, bn = b * s.per_reach >> 10;
+                        if (absolute(an) > 3000 || absolute(bn) > 3000) continue;
+                        const i32 near4 = 4 * (((an * an >> 10) * s.per_el >> 10) + ((bn * bn >> 10) * s.el >> 10));  // (its pull)^4
+                        const i32 f = mul(s.e, decay(near4));
+                        if (f > flash) flash = f;
+                    }
+                    flash = flash + (flash * 3 >> 3) > kOne ? kOne : flash + (flash * 3 >> 3);  // x 1.3, at most 1
+                    // Night: dim grey up to 13 as it flashes; day: grey 10 up to white.
+                    const i32 level_grey = lit ? 170 + (85 * flash >> 15) : dark + ((221 - dark) * flash >> 15);
                     dash_line(ink, Point{g.x + (e[k].x << 6), g.y + (e[k].y << 6)}, Point{g.x + (e[k + 1].x << 6), g.y + (e[k + 1].y << 6)},
-                              lit ? bright_lit : bright_dark);
+                              level_grey);
                 }
             }
     }
     finish(ink);
 }
 
-// ---- Slice: the globe sliced up ----
-// Meridians and the equator cut the turning globe (12 degrees a second) into sixteen pieces,
-// eight round the top and eight round the bottom. Each slice the sound plays lifts a piece
-// facing us out of the globe, with a bright edge, leaving a dark gap, and back with its
-// envelope (Shape; at least 0.35 s, so short slices are seen): the next piece on when the
-// sound steps on to the next slice, any with Drift's jumps. One piece at a time; faster than
-// one every 0.18 s, the screen shows every second or third.
-const i32 kPieceVisible = 358;  // Q10 s
+// ---- Plates (the effect's Slice): the globe broken into plates ----
+// Meridians and the equator cut the turning globe into sixteen plates, eight round the top and
+// eight round the bottom. Each slice the sound plays lifts a plate facing us out of the globe
+// (about 5 px at most), leaving a dark gap, its edge flashing with the slice's envelope (Shape)
+// up to white, as the dots do on the other screens: the next plate on when the sound steps on
+// to the next slice, any with Drift's jumps. Activity drives the screen as it drives the
+// sound: the globe turns faster (6 degrees a second at 0 to 72 at full), each plate is out at
+// least 0.35 s at 0 down to 0.07 s at full (so short slices are seen) and lifts a little less,
+// and the next is taken after 0.18 s down to 0.025 s; faster than that, the screen shows every
+// second or third. One plate at a time.
 void slice_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt, bool still) {
     const i32 activity = q15(input.slots[kActivity]), size = q15(input.slots[kSize]);
     const i32 shape = q15(input.slots[kShape]), drift = q15(input.slots[kDrift]);
     const u32 now = state.now;
     Globe g = globe(state, kCx, kCy, kRadius, drift);
-    const i32 spin = still ? 0 : angle_of(now, 120);
+    const i32 visible_least = 358 - mul(287, activity), pace = 184 - mul(159, activity);  // Q10 s
+    if (!still) state.plate_spin = (state.plate_spin + dt * (60 + mul(660, mul(activity, activity)))) % (3600 << 10);
+    const i32 spin = still ? 0 : state.plate_spin >> 10;
     const auto facing = [&](u32 piece) { return fc(static_cast<i32>(piece % 8) * 450 + 225 + spin) > 358; };
 
     // Imagined slices: one every 0.6 s / 16^Activity (none under 1%).
@@ -846,8 +897,8 @@ void slice_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt,
             state.slice = jump ? (r >> 16) % 8 : (state.slice + 1) % 8;
             // Shown only once the one shown has had 0.18 s, or has finished.
             const i32 shown_for = static_cast<i32>(now - state.slice_born);
-            const i32 vis = state.slice_length > kPieceVisible ? state.slice_length : kPieceVisible;
-            if (state.slice_shown && shown_for < 184 && shown_for < vis) continue;
+            const i32 vis = state.slice_length > visible_least ? state.slice_length : visible_least;
+            if (state.slice_shown && shown_for < pace && shown_for < vis) continue;
             u32 piece = jump ? (r >> 20) % 16 : (state.piece + 1) % 16;
             for (u32 n = 0; n < 16 && !facing(piece); ++n) piece = (piece + 1) % 16;
             state.piece = piece;
@@ -858,7 +909,7 @@ void slice_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt,
     }
     i32 e = 0;
     if (state.slice_shown) {
-        const i32 vis = state.slice_length > kPieceVisible ? state.slice_length : kPieceVisible;
+        const i32 vis = state.slice_length > visible_least ? state.slice_length : visible_least;
         const i32 x = static_cast<i32>(now - state.slice_born) * 32768 / vis;
         e = envelope(x, shape);
         if (x >= kOne) state.slice_shown = 0;
@@ -889,8 +940,9 @@ void slice_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt,
             gap.points[k] = piece.points[k] = Point{clamp(p.x - g.x, -limit, limit), clamp(p.y - g.y, -limit, limit)};
         }
         const Dir mid = toward((top + bottom) / 2, a + 225);
-        const i32 scale = unit + (e * 5120 / kRadius >> 15);
-        const i32 push = 10 * e >> 5;  // Q10 px
+        const i32 lifted_by = mul(e, kOne - mul(13107, activity));  // a little less at high Activity
+        const i32 scale = unit + (lifted_by * 2560 / kRadius >> 15);   // onto a globe 2.5 px bigger
+        const i32 push = 4 * lifted_by >> 5;                           // and 4 px out, Q10 px
         const i32 ox = ((mid.x * g.cl + mid.y * g.sl) >> 10) * push >> 10, oy = ((mid.x * g.sl - mid.y * g.cl) >> 10) * push >> 10;
         for (i32 k = 0; k < 64; ++k)
             lifted[k] = Point{g.x + ox + (piece.points[k].x * scale >> 10), g.y + oy + (piece.points[k].y * scale >> 10)};
@@ -913,7 +965,7 @@ void slice_screen(DisplayState& state, const Input& input, Frame& frame, i32 dt,
         return in;
     };
     // The cuts: eight meridians and the equator, their facing halves.
-    Ink ink{frame, 0};
+    Ink ink{frame, 0, 0};
     for (i32 c = 0; c < 8; ++c) {
         Point prev{0, 0};
         bool was = false;
@@ -973,6 +1025,9 @@ void display(DisplayState& state, const Input& input, Frame& frame) {
         state.slice_born = 0;
         state.slice_length = state.slice_wait = 0;
         state.piece = state.slice = state.slice_shown = 0;
+        state.plate_spin = 0;
+        state.sat_phase = 0;
+        for (i32& r : state.sat_run) r = 0;
         // Every outline always holds a shape, shown or not: a frame whose paths lack one is
         // refused whole, and the screen would keep its artwork.
         for (u32 p = 0; p < 4; ++p) {
@@ -990,6 +1045,7 @@ void display(DisplayState& state, const Input& input, Frame& frame) {
         state.day_radius = 0;
         state.cloud_turn = 0;
         for (u32 i = 0; i < kSpecks; ++i) hide(frame, kNodeSpecks + i);
+        for (u32 i = 0; i < kDots; ++i) hide(frame, kNodeDots + i);
     }
 
     // The header: page 1 over page 2; while Shift is held the edited row names the
@@ -999,7 +1055,8 @@ void display(DisplayState& state, const Input& input, Frame& frame) {
         {"activity", "size", "shape", "pitch", "drift", "repeats", "droop", "space"},
         {"mode", "motion", "sync", "hold", "drift", "repeats", "droop", "space"},
         {"activity", "size", "shape", "pitch", "mode", "motion", "sync", "hold"}};
-    static const char* const kModes[4] = {"cloud", "strch", "sprng", "slice"};
+    // The screens' names (the effect's Cloud, Stretch, Spring and Slice).
+    static const char* const kModes[4] = {"wthr", "sat", "orbit", "plate"};  // (5 letters fit)
     // Motion's shape, then - for bending down or + for up.
     static const char* const kMotions[6] = {"both-", "both+", "out-", "out+", "in-", "in+"};
     static const char* const kSyncs[2] = {"free", "beat"};
@@ -1009,7 +1066,7 @@ void display(DisplayState& state, const Input& input, Frame& frame) {
     u32 page = 0;
     for (u32 col = 0; col < 4; ++col)
         if (input.shown[col] == kPages[1][col]) page = 1;
-    // In Spring, Shape sets how long a cycle takes: named for that, in seconds (0.25 s x
+    // In Orbit (Spring), Shape sets how long a cycle takes: named for that, in seconds (0.25 s x
     // 120^shape, to 30 s, as the effect's) or, on tempo, beats (a half to 64).
     const bool cycle = mode == 2;
     if (cycle) {

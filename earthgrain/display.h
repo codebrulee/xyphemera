@@ -1,7 +1,7 @@
 #pragma once
 #include <opxy/page_header.hpp>
 
-namespace fragmentedearth {
+namespace earthgrain {
 // Matches resources.display in definition.json: paths, points, nodes, texts,
 // palette. tools/make_panel.py writes both and names every node (panel.h).
 using Frame = opxy::draw::Frame<4, 64, 494, 16, 16>;
@@ -49,8 +49,8 @@ struct DisplayState {
     opxy::u32 systems_next;
     opxy::u32 cloud_turn;  // which half of its work Cloud does this frame
     opxy::i32 field[21 * 21];  // the pressure over a 20 x 20 grid across the disc, Q12
-    // Stretch: the recording's newest moment and the play point (Q10 s), and the
-    // play point as shown: running forward to a jump over 0.45 s.
+    // Satellite (Stretch): the recording's newest moment and the play point (Q10 s),
+    // and the play point as shown: running forward to a jump over 0.45 s.
     opxy::i32 write, head, shown, leap_from;
     opxy::u32 leap_at;
     opxy::u32 leaping;
@@ -59,5 +59,10 @@ struct DisplayState {
     opxy::u32 slice_born;
     opxy::i32 slice_length, slice_wait;
     opxy::u32 piece, slice, slice_shown;
+    opxy::i32 plate_spin;  // Plates: the globe's turn, Q10 tenths
+    // Satellite: the grains' phase (Q16 of a grain; voice k a quarter behind voice k - 1) and
+    // each satellite's run over the ground (Q4 tenths).
+    opxy::u32 sat_phase;
+    opxy::i32 sat_run[4];
 };
 }

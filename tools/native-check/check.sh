@@ -6,7 +6,7 @@
 #
 #   tools/native-check/check.sh <machine folder> <test.cpp> <routine.s ...>
 #
-# e.g. tools/native-check/check.sh fragmentedearth tools/native-check/test_space.cpp fragmentedearth/native/space.s
+# e.g. tools/native-check/check.sh earthgrain tools/native-check/test_space.cpp earthgrain/native/space.s
 # Needs OPEN_XY (the SDK checkout, default ../open-xy beside this repository) and BFIN_RUN
 # (bfin-elf-run from GNU binutils-gdb's sim, default: on PATH).
 set -e

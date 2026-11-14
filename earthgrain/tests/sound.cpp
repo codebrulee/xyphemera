@@ -10,7 +10,7 @@ static void check(const char* what, bool ok) {
     if (!ok) { std::printf("FAIL %s\n", what); ++failures; }
 }
 
-static opxy::i32 words[fragmentedearth::kBufferWords];
+static opxy::i32 words[earthgrain::kBufferWords];
 const double kFs = 44100;
 const double kPi = 3.14159265358979;
 
@@ -35,10 +35,10 @@ static void words_for(const Settings& s, opxy::i32 (&p)[12]) {
 // Runs `seconds` of input(n) (both sides) and returns the wet, (left + right) / 2.
 template <class Input>
 static std::vector<double> run(const Settings& s, double seconds, Input input, bool garbage = false) {
-    for (opxy::u32 i = 0; i < fragmentedearth::kBufferWords; ++i)
+    for (opxy::u32 i = 0; i < earthgrain::kBufferWords; ++i)
         words[i] = garbage ? static_cast<opxy::i32>(i * 2654435761u) : 0;
-    fragmentedearth::State state;
-    fragmentedearth::initialize(state);
+    earthgrain::State state;
+    earthgrain::initialize(state);
     opxy::i32 p[12];
     words_for(s, p);
     std::vector<double> out;
@@ -47,7 +47,7 @@ static std::vector<double> run(const Settings& s, double seconds, Input input, b
     for (unsigned b = 0; b < blocks; ++b) {
         // At the send bus's level, 2^10 below full scale; the output read back at full scale.
         for (unsigned i = 0; i < opxy::block_frames; ++i) l[i] = r[i] = input(b * opxy::block_frames + i) / 1024;
-        fragmentedearth::process(state, opxy::Buffer{words, fragmentedearth::kBufferWords}, opxy::Transport{1200, b * 64u * 96u / 22050u, true}, l, r, p);
+        earthgrain::process(state, opxy::Buffer{words, earthgrain::kBufferWords}, opxy::Transport{1200, b * 64u * 96u / 22050u, true}, l, r, p);
         for (unsigned i = 0; i < opxy::block_frames; ++i) out.push_back((l[i] + static_cast<double>(r[i])) * 1024 / 4294967296.0);
     }
     return out;
@@ -87,15 +87,15 @@ int main() {
 
     // Outside a send there is no buffer: silence.
     {
-        fragmentedearth::State state;
-        fragmentedearth::initialize(state);
+        earthgrain::State state;
+        earthgrain::initialize(state);
         opxy::i32 p[12];
         words_for(Settings(), p);
         opxy::i32 l[opxy::block_frames], r[opxy::block_frames];
         bool silent = true;
         for (unsigned b = 0; b < 100; ++b) {
             for (unsigned i = 0; i < opxy::block_frames; ++i) l[i] = r[i] = q31(0.5);
-            fragmentedearth::process(state, opxy::Buffer{nullptr, 0}, opxy::Transport{0, 0, false}, l, r, p);
+            earthgrain::process(state, opxy::Buffer{nullptr, 0}, opxy::Transport{0, 0, false}, l, r, p);
             for (unsigned i = 0; i < opxy::block_frames; ++i) silent = silent && !l[i] && !r[i];
         }
         check("silence outside a send", silent);
@@ -104,8 +104,8 @@ int main() {
     // A state and grain pool left by another build: whatever they hold, nothing outside the
     // recording is read and no garbage is heard.
     for (unsigned seed = 1; seed <= 20; ++seed) {
-        for (opxy::u32 i = 0; i < fragmentedearth::kBufferWords; ++i) words[i] = static_cast<opxy::i32>((i + seed) * 2654435761u);
-        fragmentedearth::State state;
+        for (opxy::u32 i = 0; i < earthgrain::kBufferWords; ++i) words[i] = static_cast<opxy::i32>((i + seed) * 2654435761u);
+        earthgrain::State state;
         opxy::u32* raw = reinterpret_cast<opxy::u32*>(&state);
         for (unsigned i = 0; i < sizeof state / 4; ++i) raw[i] = (i + 7 * seed) * 2246822519u;
         if (seed & 1) state.ready = 1;
@@ -115,7 +115,7 @@ int main() {
         double peak = 0;
         for (unsigned b = 0; b < 400; ++b) {
             for (unsigned i = 0; i < opxy::block_frames; ++i) l[i] = r[i] = 0;
-            fragmentedearth::process(state, opxy::Buffer{words, fragmentedearth::kBufferWords}, opxy::Transport{1200, 0, true}, l, r, p);
+            earthgrain::process(state, opxy::Buffer{words, earthgrain::kBufferWords}, opxy::Transport{1200, 0, true}, l, r, p);
             for (unsigned i = 0; i < opxy::block_frames; ++i) peak = std::fmax(peak, std::fabs(double(l[i])));
         }
         check("a stale state and grain pool are not heard", peak == 0);
