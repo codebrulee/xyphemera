@@ -5,6 +5,10 @@
 //       -DPARAMETERS="..." [-DTRANSPOSE=-12] tools/render/abrender.cpp -o render
 //   ./render <out> <gain>
 //
+// BUS_SHIFT (default 0): feed the phrase 2^BUS_SHIFT quieter and scale the wet back
+// up, as the OP-XY's send buses run (about 2^11 below full scale when playing).
+// BPM_X10 (for an effect that declares "transport"): pass process() that tempo, playing, the
+// song position advancing; CLICK=1 also ticks each beat into the mix.
 // PARAMETERS: the twelve Q31 words process() gets. Use one gain across the
 // files of an A/B so their levels compare. The phrase: three pad chords, a
 // plucked melody, then a tail.
@@ -17,6 +21,12 @@
 #include <algorithm>
 #include <vector>
 #include <chrono>
+#ifndef CLICK
+#define CLICK 0
+#endif
+#ifndef BUS_SHIFT
+#define BUS_SHIFT 0
+#endif
 #ifndef TRANSPOSE
 #define TRANSPOSE 0
 #endif
@@ -59,14 +69,28 @@ int main(int argc, char** argv) {
     const opxy::i32 p[12] = {PARAMETERS};
     std::vector<float> wl, wr; opxy::i32 bl[64], br[64]; double secs = 0, peak = 0;
     for (size_t b = 0; b + 64 <= L.size(); b += 64) {
-        for (int i = 0; i < 64; ++i) { bl[i] = q(L[b + i] * 0.5); br[i] = q(R[b + i] * 0.5); }
+        for (int i = 0; i < 64; ++i) { bl[i] = q(L[b + i] * 0.5 / (1 << BUS_SHIFT)); br[i] = q(R[b + i] * 0.5 / (1 << BUS_SHIFT)); }
         auto t0 = std::chrono::steady_clock::now();
+#ifdef BPM_X10
+        const opxy::u32 ticks = static_cast<opxy::u32>(b * 96.0 * BPM_X10 / (600.0 * kFs));
+        NS::process(st, opxy::Buffer{words, NS::kBufferWords}, opxy::Transport{BPM_X10, ticks, true}, bl, br, p);
+#else
         NS::process(st, opxy::Buffer{words, NS::kBufferWords}, bl, br, p);
+#endif
         secs += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-        for (int i = 0; i < 64; ++i) { wl.push_back(bl[i] / 2147483648.0); wr.push_back(br[i] / 2147483648.0); peak = std::fmax(peak, std::fabs(wl.back())); }
+        for (int i = 0; i < 64; ++i) { wl.push_back(bl[i] * double(1 << BUS_SHIFT) / 2147483648.0); wr.push_back(br[i] * double(1 << BUS_SHIFT) / 2147483648.0); peak = std::fmax(peak, std::fabs(wl.back())); }
     }
     std::vector<float> ml(wl.size()), mr(wl.size());
     for (size_t i = 0; i < wl.size(); ++i) { ml[i] = 0.7 * L[i] + gain * wl[i]; mr[i] = 0.7 * R[i] + gain * wr[i]; }
+#if CLICK && defined(BPM_X10)
+    // A short tick on every beat (a higher one on each bar), to hear what follows the tempo.
+    const double beat = 600.0 * kFs / BPM_X10;
+    for (size_t n = 0, k = 0; n < ml.size(); n = static_cast<size_t>(++k * beat))
+        for (size_t i = 0; i < 400 && n + i < ml.size(); ++i) {
+            const double v = 0.15 * std::exp(-i / 60.0) * std::sin(2 * M_PI * (k % 4 ? 1500.0 : 2500.0) * i / kFs);
+            ml[n + i] += v; mr[n + i] += v;
+        }
+#endif
     // End 0.4 s after the mix last rises above -60 dBFS, fading the last 0.2 s,
     // rather than at the phrase's full length.
     size_t end = ml.size();

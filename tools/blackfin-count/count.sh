@@ -8,6 +8,7 @@
 # controls, the Shift row at its first choices). Needs:
 #   OPEN_XY     the SDK checkout (default ../open-xy beside this repository)
 #   BFIN_RUN    bfin-elf-run from GNU binutils-gdb's sim (default: on PATH)
+#   BPM_X10     a tempo, for an effect that declares "transport"
 # The simulator can't run the OP-XY's 32 x 32 fractional multiply, so
 # include/opxy/q31.hpp stands in a one-instruction integer multiply: the audio
 # is wrong but the instruction count is right. It counts instructions, not
@@ -30,7 +31,7 @@ FLAGS="-mcpu=bf707 -O2 -std=gnu++11 -ffreestanding -fno-exceptions -fno-rtti -fn
 "$T/bfin-elf-g++" $FLAGS -c "$SDK/platform/blackfin/memory.cpp" -o "$W/memory.o"
 n=()
 for b in 20 60; do
-    "$T/bfin-elf-g++" $FLAGS -DNS=$NS -DBLOCKS=$b "-DPARAMETERS=$PARAMETERS" -c "$HERE/bench.cpp" -o "$W/bench.o"
+    "$T/bfin-elf-g++" $FLAGS -DNS=$NS -DBLOCKS=$b ${BPM_X10:+-DBPM_X10=$BPM_X10} "-DPARAMETERS=$PARAMETERS" -c "$HERE/bench.cpp" -o "$W/bench.o"
     "$T/bfin-elf-ld" -e __start -o "$W/bench$b.elf" "$W/start.o" "$W/bench.o" "$W/divide.o" "$W/memory.o"
     n+=($("$BFIN_RUN" --environment user -v "$W/bench$b.elf" 2>&1 | grep "Total instructions" | tr -d ', ' | sed 's/.*:\([0-9]*\).*/\1/'))
 done
