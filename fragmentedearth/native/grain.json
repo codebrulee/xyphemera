@@ -1,0 +1,6 @@
+{
+  "symbol": "fragmentedearth_native_grain",
+  "stackBytes": 28,
+  "range": "count 1..64; the samples read (position >> 14, and the next) inside the recording",
+  "reference": "fragmentedearth::grain_reference (native/grain.hpp)"
+}

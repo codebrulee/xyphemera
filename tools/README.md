@@ -30,3 +30,13 @@ store in order (`prbuf`) and scattered (`prscatter`), and multiplies
 (`prmul`). Not for release. Add them to a profiling collection; they need a
 buffer the benchmark can allocate (64 KB here; 256 KB failed) and pass audio
 through, or the profiler counts them inactive.
+
+## native-check
+
+`check.sh <machine folder> <test.cpp> <routine.s ...>` checks a machine's native routines
+(its own Blackfin assembly) against their C references on the GNU Blackfin simulator,
+case by case, and exits with how many cases differ. The simulator lacks the 32 x 32 (T)
+multiply, so both sides use the instruction counter's stand-in multiply: the routine's
+`Rx = Ry * Rz (T)` (alone, or first in a parallel group) becomes the integer one. Everything
+else runs as on the device. `test_grain.cpp` and `test_space.cpp` are Fragmented Earth's.
+Set `OPEN_XY` and `BFIN_RUN` as for blackfin-count; `DEFS=-DTRIALS=60` runs a shorter check.

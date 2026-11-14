@@ -1,4 +1,6 @@
 #include "core.h"
+#include "native/grain.hpp"
+#include "native/space.hpp"
 #include <opxy/q31.hpp>
 
 // Fragmented Earth, a granular looper: a send effect that records what it hears into a
@@ -69,8 +71,7 @@ const u32 kOnsetOffset = kFeedbackOffset + opxy::block_frames;
 // what it gives each side.
 const u32 kHalfBlock = opxy::block_frames / 2;
 const u32 kScratchOffset = kOnsetOffset + kOnsets;
-const u32 kSpaceOffset = kScratchOffset + 5 * kHalfBlock;
-const u32 kSpaceWords = 4096;
+const u32 kSpaceOffset = kScratchOffset + 5 * kHalfBlock;  // (scratch: the dry input at half rate, then a block for play())
 const u32 kRecordingOffset = kSpaceOffset + kSpaceWords;
 const u32 kLength = (kBufferWords - kRecordingOffset) * 2 - 2;  // about 5.74 s
 static_assert(static_cast<unsigned long long>(kLength) * 16384 < 4294967296ull, "positions are Q14 in 32 bits");
@@ -131,25 +132,18 @@ i32 soft23(i32 x, i32 knee) {
 // a 4-bit exponent, so quiet playing keeps the same precision as loud (about 66 dB below the
 // sample itself) and reading one back is two masks and a shift. Values are Q23 at full-scale level.
 const i32 kTop = 8388607;
-i16 encode(i32 v) {
+inline i16 encode(i32 v) {
     const u32 magnitude = static_cast<u32>(v < 0 ? -v : v);
-    // The exponent: how many bits the magnitude has above eleven (no clz in the device's library).
-    u32 e = 0, t = magnitude >> 11;
-    if (t >= 256) { e += 8; t >>= 8; }
-    if (t >= 16) { e += 4; t >>= 4; }
-    if (t >= 4) { e += 2; t >>= 2; }
-    if (t >= 2) { e += 1; t >>= 1; }
-    e += t;  // 0.. 12
+    // The exponent: how many bits the magnitude has above eleven, 0..12. (Leading redundant sign
+    // bits: one instruction on the device, SIGNBITS; there is no clz in its library.)
+    const i32 bits = 31 - __builtin_clrsb(static_cast<i32>(magnitude));
+    u32 e = bits > 11 ? static_cast<u32>(bits - 11) : 0u;
     u32 m = (magnitude + ((1u << e) >> 1)) >> e;  // rounded
     if (m > 2047) { ++e; m >>= 1; }
     const i32 mantissa = v < 0 ? -static_cast<i32>(m) : static_cast<i32>(m);
     return static_cast<i16>((static_cast<u32>(mantissa) << 4) | e);
 }
-// Back to Q29 (Q23 x 64), so two samples' difference still fits.
-inline i32 decode(i16 c) {
-    const i32 v = c;
-    return (v & ~15) << ((v & 15) + 2);
-}
+// (Back to Q29: decode(), in native/grain.hpp.)
 
 i32 control(i32 word) { return word < 0 ? 0 : word; }
 u32 choice(i32 word, u32 count) {
@@ -730,8 +724,9 @@ void slice(State& s, Grain* grains, const u32* onsets, const opxy::Transport& t,
     place(s, p, grains, middle, rate, length, control(p[kShape]), amplitude, pan);
 }
 
-// Mixes one grain's next block into the output (Q26, so 16 grains at full scale fit).
-void play(Grain& g, const i16* recording, i32* out_left, i32* out_right) {
+// Mixes one grain's next block into the output (Q26, so 16 grains at full scale fit). `v` is
+// a block of scratch for grain() (native/grain.hpp), which does the unchecked stretches.
+void play(Grain& g, const i16* recording, i32* out_left, i32* out_right, i32* v) {
     u32 count = g.length - g.age;
     if (count > opxy::block_frames) count = opxy::block_frames;
     u32 position = g.position;
@@ -754,25 +749,20 @@ void play(Grain& g, const i16* recording, i32* out_left, i32* out_right) {
         const i32 to_left = multiply(e, g.gain_left), to_right = multiply(e, g.gain_right);
         i32 step_left, step_right;
         if (n == 16) { step_left = (to_left >> 4) - (left >> 4); step_right = (to_right >> 4) - (right >> 4); }
+        else if (to_left == left && to_right == right) step_left = step_right = 0;  // (at full level: no division)
         else { step_left = (to_left - left) / static_cast<i32>(n); step_right = (to_right - right) / static_cast<i32>(n); }
         i32* ol = out_left + done;
         i32* orr = out_right + done;
         if (clear) {
-            for (u32 i = 0; i < n; ++i) {
-                const i32 a = decode(r[position >> 14]), b = decode(r[(position >> 14) + 1]);
-                const i32 v = (a + multiply(b - a, static_cast<i32>(position & 16383) << 17)) << 2;
-                ol[i] += multiply(v, left) >> 5;
-                orr[i] += multiply(v, right) >> 5;
-                left += step_left;
-                right += step_right;
-                position += static_cast<u32>(rate);
-            }
+            GrainJob job{position, rate, n, left, step_left, right, step_right, orr, v};
+            grain(r, ol, &job);
+            position = job.position;
         } else {
             for (u32 i = 0; i < n; ++i) {
                 u32 index = base + (position >> 14);
                 if (index >= kLength) index -= kLength;
                 const i32 a = decode(recording[index]), b = decode(recording[index + 1]);
-                const i32 v = (a + multiply(b - a, static_cast<i32>(position & 16383) << 17)) << 2;
+                const i32 v = (a + multiply(b - a, static_cast<i32>(position << 18 >> 1))) << 2;  // (the fraction, Q31)
                 ol[i] += multiply(v, left) >> 5;
                 orr[i] += multiply(v, right) >> 5;
                 left += step_left;
@@ -853,46 +843,11 @@ void initialize(State& state) {
 // Space: a light reverb after the grains (not fed back by Repeats). Each side passes through
 // two diffusers, then into a loop of four lines mixed together each time round (a Householder
 // mix), darkened a little as they go; Space sets how much of it is heard and how long it
-// lasts, about 0.4 s to 2.3 s. It runs at half rate. Its eight lines share its words of the buffer: one
-// position turns through them all, each line writing at its own start and reading its own
-// length further on, so every access is an add and a mask. Cleared a block at a time at first.
+// lasts, about 0.4 s to 2.3 s. It runs at half rate, its eight lines sharing 4096 words of the
+// buffer (native/space.hpp). Cleared a block at a time at first.
 // (In samples at half rate: Space runs at 22.05 kHz, its loop darkening the top anyway.)
-const u32 kSpaceLengths[8] = {71, 191, 53, 139, 523, 661, 761, 937};
-const u32 kSpaceMask = kSpaceWords - 1;
-static_assert((kSpaceWords & kSpaceMask) == 0, "Space's words are a power of two");
-// Each line's start: one after the end of the last, so none overwrites another's samples.
-const u32 kSpaceStart[8] = {0, 72, 264, 318, 458, 982, 1644, 2406};
-static_assert(2406 + 937 + 1 <= kSpaceWords, "Space's lines fit");
-const i32 kSpaceDamp = 1395864371;  // 0.65 (Q31): how much of each line's change gets through
+static_assert(2406 + 937 + 1 <= kSpaceWords, "Space's lines fit (native/space.hpp's last line)");
 const i32 kSpaceWet = 1503238554;   // 0.7 (Q31)
-const i32 kSpaceMost = 1 << 28;
-inline i32 limit(i32 x) { return x > kSpaceMost ? kSpaceMost : x < -kSpaceMost ? -kSpaceMost : x; }
-// One diffuser (an allpass of gain 0.625) over a block, from `in` to `out` (which may be `in`).
-void diffuse(i32* words, u32 n, u32 k, const i32* in, i32* out) {
-    const u32 write = kSpaceStart[k], read = kSpaceStart[k] + kSpaceLengths[k];
-    for (u32 i = 0; i < kHalfBlock; ++i, n = (n - 1) & kSpaceMask) {
-        const i32 d = words[(n + read) & kSpaceMask];
-        const i32 v = limit(in[i] - (d >> 1) - (d >> 3));
-        words[(n + write) & kSpaceMask] = v;
-        out[i] = d + (v >> 1) + (v >> 3);
-    }
-}
-// One line of the loop over a block: what comes round less half the loop's sum (the
-// Householder mix), darkened, times its gain, plus `in` (subtracted for the second pair);
-// what it gives adds to `out`. Every line is longer than a block, so a block's reads were all
-// written in earlier blocks and the lines can go one at a time.
-i32 loop_line(i32* words, u32 n, u32 k, i32 damp, i32 gain, const i32* half, const i32* in, bool minus,
-              i32* out) {
-    const u32 write = kSpaceStart[k], read = kSpaceStart[k] + kSpaceLengths[k];
-    for (u32 i = 0; i < kHalfBlock; ++i, n = (n - 1) & kSpaceMask) {
-        const i32 a = words[(n + read) & kSpaceMask];
-        damp += multiply(a - half[i] - damp, kSpaceDamp);
-        const i32 g = multiply(damp, gain);
-        words[(n + write) & kSpaceMask] = limit(minus ? g - in[i] : g + in[i]);
-        out[i] += a;
-    }
-    return damp;
-}
 void space(State& s, i32* words, i32* scratch, i32* left, i32* right, opxy::Parameters p) {
     if (s.space_cleared < kSpaceWords) {
         const u32 end = s.space_cleared + 1024 < kSpaceWords ? s.space_cleared + 1024 : kSpaceWords;
@@ -905,52 +860,28 @@ void space(State& s, i32* words, i32* scratch, i32* left, i32* right, opxy::Para
     // How long it lasts: 0.3 s x 2^(3.3 amount); each loop line's gain loses 60 dB in that time.
     const u32 lasts = (13230u * (power_of_two(multiply(amount, 216269)) >> 8)) >> 8;  // samples
     const i32 dry = kMaximum - (amount >> 1), wet = multiply(amount, kSpaceWet);
-    const u32 n = s.space_at;
-    i32* dl = scratch;
-    i32* dr = scratch + kHalfBlock;
-    i32* half = scratch + 2 * kHalfBlock;
-    i32* out_left = scratch + 3 * kHalfBlock;
-    i32* out_right = scratch + 4 * kHalfBlock;
-    // Down to half rate: each pair of samples averaged (and halved, for headroom), added to the
-    // dry input process() left in dl and dr, so what is played has the space too.
-    for (u32 i = 0; i < kHalfBlock; ++i) {
-        dl[i] += (left[2 * i] >> 2) + (left[2 * i + 1] >> 2);
-        dr[i] += (right[2 * i] >> 2) + (right[2 * i + 1] >> 2);
-        out_left[i] = out_right[i] = 0;
-    }
-    diffuse(words, n, 0, dl, dl);
-    diffuse(words, n, 1, dl, dl);
-    diffuse(words, n, 2, dr, dr);
-    diffuse(words, n, 3, dr, dr);
-    {
-        u32 m = n;
-        const u32 r4 = kSpaceStart[4] + kSpaceLengths[4], r5 = kSpaceStart[5] + kSpaceLengths[5];
-        const u32 r6 = kSpaceStart[6] + kSpaceLengths[6], r7 = kSpaceStart[7] + kSpaceLengths[7];
-        for (u32 i = 0; i < kHalfBlock; ++i, m = (m - 1) & kSpaceMask)
-            half[i] = (words[(m + r4) & kSpaceMask] >> 1) + (words[(m + r5) & kSpaceMask] >> 1) +
-                      (words[(m + r6) & kSpaceMask] >> 1) + (words[(m + r7) & kSpaceMask] >> 1);
-    }
     const u32 half_lasts = lasts / 2;
+    i32 gain[4];
+    for (u32 k = 0; k < 4; ++k)
+        gain[k] = static_cast<i32>(power_of_two(static_cast<i32>(15u * 65536u - 653131u * kSpaceLengths[4 + k] / half_lasts)));
+    // The block: native/space.hpp (scratch holds the dry input process() left, at half rate).
+    SpaceJob job;
+    job.left = left;
+    job.right = right;
+    job.at = s.space_at;
+    job.dry = dry;
+    job.wet = wet;
     for (u32 k = 0; k < 4; ++k) {
-        const i32 gain = static_cast<i32>(power_of_two(static_cast<i32>(15u * 65536u - 653131u * kSpaceLengths[4 + k] / half_lasts)));
-        // Lines 4 and 6 take the left, 5 and 7 the right; 4 and 7 give the left, 5 and 6 the right.
-        s.space_damp[k] = loop_line(words, n, 4 + k, s.space_damp[k], gain, half, k & 1 ? dr : dl, k >= 2,
-                                    k == 0 || k == 3 ? out_left : out_right);
+        job.gain[k] = gain[k];
+        job.damp[k] = s.space_damp[k];
     }
-    // Back to full rate, each new sample halfway from the last.
-    i32 last_left = s.space_last[0], last_right = s.space_last[1];
-    for (u32 i = 0; i < kHalfBlock; ++i) {
-        const i32 wl = multiply(out_left[i], wet), wr = multiply(out_right[i], wet);
-        left[2 * i] = multiply(left[2 * i], dry) + (last_left >> 1) + (wl >> 1);
-        right[2 * i] = multiply(right[2 * i], dry) + (last_right >> 1) + (wr >> 1);
-        left[2 * i + 1] = multiply(left[2 * i + 1], dry) + wl;
-        right[2 * i + 1] = multiply(right[2 * i + 1], dry) + wr;
-        last_left = wl;
-        last_right = wr;
-    }
-    s.space_last[0] = last_left;
-    s.space_last[1] = last_right;
-    s.space_at = (n - kHalfBlock) & kSpaceMask;
+    job.last[0] = s.space_last[0];
+    job.last[1] = s.space_last[1];
+    space_block(words, scratch, &job);
+    for (u32 k = 0; k < 4; ++k) s.space_damp[k] = job.damp[k];
+    s.space_last[0] = job.last[0];
+    s.space_last[1] = job.last[1];
+    s.space_at = (s.space_at - kHalfBlock) & kSpaceMask;
 }
 
 // The state and the grain pool can hold what an earlier build, or another effect in the slot,
@@ -1021,6 +952,11 @@ void process(State& state, opxy::Buffer buffer, const opxy::Transport& transport
     // An onset: the input jumps above three times where it has lately been (and above a floor about
     // 68 dB under full scale, so quiet sends are cut too), at least 60 ms after the last.
     const i32 onset_above = 3 * state.onset_level + kOnsetFloor;
+    // (The loop keeps the state it moves in locals: written through `onsets` and `recording`,
+    // the state would otherwise be read back from memory every sample.)
+    u32 write = state.write, written = state.written, onset_count = state.onsets, last_onset = state.last_onset;
+    u32 rewrite_at = state.rewrite, draining = state.draining;
+    const u32 frozen = state.frozen, region_start = state.region_start, region_length = state.region_length;
     for (u32 i = 0; i < frames; ++i) {
         const i32 sum = (left[i] >> 1) + (right[i] >> 1);
         // Q23 at full-scale level, keeping every bit the bus has (Q15 for the level).
@@ -1033,26 +969,26 @@ void process(State& state, opxy::Buffer buffer, const opxy::Transport& transport
         tone += multiply(feedback[i] - dc - tone, 644218880);  // 0.3
         const i32 tone_magnitude = (tone < 0 ? -tone : tone) >> 8;
         if (tone_magnitude > tone_peak) tone_peak = tone_magnitude;
-        if (state.draining && state.write == state.region_start) state.draining = 0;  // never into the phrase
-        if (!state.frozen || state.draining) {
+        if (draining && write == region_start) draining = 0;  // never into the phrase
+        if (!frozen || draining) {
             // The fed-back part stays within half scale, so at high Repeats the loop saturates
             // gently rather than growing until it clips.
             i32 v = x + (feed ? soft23(multiply(tone, feed << 16), 2097152) : 0);
             v = v > kTop ? kTop : v < -kTop ? -kTop : v;
             const i16 c = encode(v);
-            recording[state.write] = c;
-            if (state.write == 0) recording[kLength] = c;
-            if (magnitude > onset_above && (!state.onsets || state.written - state.last_onset > kOnsetGap)) {
-                onsets[state.onsets % kOnsets] = state.written;
-                ++state.onsets;
-                state.last_onset = state.written;
+            recording[write] = c;
+            if (write == 0) recording[kLength] = c;
+            if (magnitude > onset_above && (!onset_count || written - last_onset > kOnsetGap)) {
+                onsets[onset_count % kOnsets] = written;
+                ++onset_count;
+                last_onset = written;
             }
-            if (++state.write == kLength) state.write = 0;
-            ++state.written;
+            if (++write == kLength) write = 0;
+            ++written;
         }
-        if (state.frozen) {
+        if (frozen) {
             if (rewrite > 16) {
-                u32 index = state.region_start + state.rewrite;
+                u32 index = region_start + rewrite_at;
                 if (index >= kLength) index -= kLength;
                 const i32 was = decode(recording[index]) >> 6;
                 const i32 was_magnitude = (was < 0 ? -was : was) >> 8;
@@ -1067,9 +1003,15 @@ void process(State& state, opxy::Buffer buffer, const opxy::Transport& transport
                 recording[index] = c;
                 if (index == 0) recording[kLength] = c;
             }
-            if (++state.rewrite >= state.region_length) state.rewrite = 0;
+            if (++rewrite_at >= region_length) rewrite_at = 0;
         }
     }
+    state.write = write;
+    state.written = written;
+    state.onsets = onset_count;
+    state.last_onset = last_onset;
+    state.rewrite = rewrite_at;
+    state.draining = draining;
     state.tone = tone;
     state.dc = dc;
     state.lift = lift_to;
@@ -1152,25 +1094,29 @@ void process(State& state, opxy::Buffer buffer, const opxy::Transport& transport
     u32 live = 0;
     for (u32 n = 0; n < kGrains; ++n)
         if (grains[n].on) {
-            play(grains[n], recording, left, right);
+            play(grains[n], recording, left, right, buffer.words + kScratchOffset + 2 * kHalfBlock);
             if (grains[n].on && grains[n].window == kLength << 14) live = 1;
         }
     if (!live || !state.frozen) state.draining = 0;
     for (u32 i = 0; i < frames; ++i) feedback[i] = ((left[i] >> 1) + (right[i] >> 1)) >> 3;  // Q23
     space(state, buffer.words + kSpaceOffset, buffer.words + kScratchOffset, left, right, parameters);
+    // Doubled, then rounded off above three-quarters scale, and back to the bus's level. Most
+    // samples are well under the knee (Q15 24575, doubled): those only shift.
+    const i32 under = 24575 << 10, over = 24576 << 10;
+    const auto out = [](i32 v) {
+        const i32 q = v > 33554431 ? 65535 : v < -33554432 ? -65535 : v >> 10;  // Q15, doubled
+        const i32 sq = soft(q, 24575);
+        return sq == q ? v >> (kBusShift - 6) : sq << (16 - kBusShift);
+    };
     for (u32 i = 0; i < frames; ++i) {
         const i32 l = left[i], r = right[i];
-        // Doubled, then rounded off above three-quarters scale.
-        const i32 ql = l > 33554431 ? 65535 : l < -33554432 ? -65535 : l >> 10;  // Q15, doubled
-        const i32 qr = r > 33554431 ? 65535 : r < -33554432 ? -65535 : r >> 10;
-        const i32 sl = soft(ql, 24575), sr = soft(qr, 24575);
-        // Back to the bus's level.
-        left[i] = sl == ql ? l >> (kBusShift - 6) : sl << (16 - kBusShift);
-        right[i] = sr == qr ? r >> (kBusShift - 6) : sr << (16 - kBusShift);
-        if (state.fade < kFull) {
+        left[i] = l >= -under && l < over ? l >> (kBusShift - 6) : out(l);
+        right[i] = r >= -under && r < over ? r >> (kBusShift - 6) : out(r);
+    }
+    if (state.fade < kFull)
+        for (u32 i = 0; i < frames; ++i) {
             left[i] = multiply(left[i], gain);
             right[i] = multiply(right[i], gain);
         }
-    }
 }
 }  // namespace fragmentedearth
