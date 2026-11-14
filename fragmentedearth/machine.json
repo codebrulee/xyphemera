@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "sdk": "1.8",
+  "kind": "effect",
+  "description": "A granular looper: it records what it hears, plays it back as clouds of grains or slowed down, and holds the last phrase as a drone when you stop playing."
+}

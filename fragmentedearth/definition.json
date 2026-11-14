@@ -1,0 +1,185 @@
+{
+  "schema": 1,
+  "id": "fragmentedearth",
+  "name": "Fragmented Earth",
+  "press": "page",
+  "parameters": [
+    {
+      "id": "activity",
+      "label": "Activity",
+      "default": 0.5,
+      "mapping": {
+        "kind": "linear",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "display": "percent"
+    },
+    {
+      "id": "size",
+      "label": "Size",
+      "default": 0.5,
+      "mapping": {
+        "kind": "exponential",
+        "minimum": 20,
+        "maximum": 1200
+      },
+      "display": "duration"
+    },
+    {
+      "id": "shape",
+      "label": "Shape",
+      "default": 0.5,
+      "mapping": {
+        "kind": "linear",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "display": "percent"
+    },
+    {
+      "id": "pitch",
+      "label": "Pitch",
+      "default": 0,
+      "display": "enum",
+      "mapping": {
+        "kind": "enum",
+        "labels": [
+          "normal",
+          "unison",
+          "oct down",
+          "oct up",
+          "fifths",
+          "octaves",
+          "reverse",
+          "harmonic"
+        ]
+      }
+    },
+    {
+      "id": "drift",
+      "label": "Drift",
+      "default": 0.3,
+      "mapping": {
+        "kind": "linear",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "display": "percent"
+    },
+    {
+      "id": "repeats",
+      "label": "Repeats",
+      "default": 0.2,
+      "mapping": {
+        "kind": "linear",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "display": "percent"
+    },
+    {
+      "id": "droop",
+      "label": "Droop",
+      "default": 0,
+      "mapping": {
+        "kind": "linear",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "display": "percent"
+    },
+    {
+      "id": "space",
+      "label": "Space",
+      "default": 0.3,
+      "mapping": {
+        "kind": "linear",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "display": "percent"
+    }
+  ],
+  "shift": [
+    {
+      "id": "mode",
+      "label": "Mode",
+      "default": 0,
+      "display": "enum",
+      "mapping": {
+        "kind": "enum",
+        "labels": [
+          "cloud",
+          "stretch",
+          "spring",
+          "slice"
+        ]
+      }
+    },
+    {
+      "id": "motion",
+      "label": "Motion",
+      "default": 0,
+      "display": "enum",
+      "mapping": {
+        "kind": "enum",
+        "labels": [
+          "breathe down",
+          "breathe up",
+          "expand down",
+          "expand up",
+          "contract down",
+          "contract up"
+        ]
+      }
+    },
+    {
+      "id": "sync",
+      "label": "Sync",
+      "default": 0,
+      "display": "enum",
+      "mapping": {
+        "kind": "enum",
+        "labels": [
+          "free",
+          "tempo"
+        ]
+      }
+    },
+    {
+      "id": "hold",
+      "label": "Hold",
+      "default": 0,
+      "display": "enum",
+      "mapping": {
+        "kind": "enum",
+        "labels": [
+          "forever",
+          "64 s",
+          "32 s",
+          "16 s",
+          "8 s",
+          "4 s",
+          "2 s",
+          "1 s",
+          "off"
+        ]
+      }
+    }
+  ],
+  "presets": {},
+  "resources": {
+    "bufferBytes": 524288,
+    "transport": 1,
+    "display": {
+      "stateBytes": 2532,
+      "stateAlignment": 4,
+      "paths": 4,
+      "points": 64,
+      "nodes": 494,
+      "texts": 16,
+      "palette": 16
+    }
+  }
+}
