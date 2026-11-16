@@ -361,6 +361,49 @@ int main() {
         check("full Decay and Shimmer stay below full scale", peak(out, 0, 40) < 0.99);
     }
 
+    // Idle: once a phrase at the send bus's level (peaks about 2^18) has died
+    // away, the effect rests. Going to rest and waking again make no step, and
+    // the next phrase comes back at the same level.
+    {
+        for (opxy::u32 i = 0; i < earthshine::kBufferWords; ++i) words[i] = 0;
+        earthshine::State state;
+        earthshine::initialize(state);
+        opxy::i32 p[12];
+        words_for(Settings(), p);
+        const earthshine::Tank& tank = *reinterpret_cast<const earthshine::Tank*>(words);
+        const unsigned phrase = 3 * 44100, again = phrase + 30 * 44100;
+        const auto bus = [&](unsigned n) {
+            const bool on = n < phrase || (n >= again && n < again + phrase);
+            return on ? static_cast<opxy::i32>(131072 * (std::sin(2 * M_PI * 220 * n / kFs) + std::sin(2 * M_PI * 329.6 * n / kFs)))
+                      : 0;
+        };
+        opxy::i32 l[opxy::block_frames], r[opxy::block_frames], last = 0;
+        double resting = -1, first = 0, second = 0, biggest_step = 0;
+        bool woke = false;
+        for (unsigned b = 0; b < (again + phrase) / opxy::block_frames; ++b) {
+            for (unsigned i = 0; i < opxy::block_frames; ++i) l[i] = r[i] = bus(b * opxy::block_frames + i);
+            earthshine::process(state, opxy::Buffer{words, earthshine::kBufferWords}, l, r, p);
+            const unsigned n = b * opxy::block_frames;
+            if (tank.asleep && resting < 0) resting = (n - phrase) / kFs;
+            if (resting >= 0 && !tank.asleep) woke = true;
+            for (unsigned i = 0; i < opxy::block_frames; ++i) {
+                const double x = l[i];
+                if (n + i < phrase) first += x * x;
+                if (n + i >= again) second += x * x;
+                // Steps from going to rest until the block the next phrase starts in.
+                if (resting >= 0 && n + i > phrase && n + opxy::block_frames <= again) biggest_step = std::fmax(biggest_step, std::fabs(x - last));
+                last = l[i];
+            }
+        }
+        if (resting < 0 || resting > 15) std::printf("  rests %.1f s after the input stops\n", resting);
+        check("rests within 15 s of the input stopping", resting >= 0 && resting <= 15);
+        check("going to rest makes no step", biggest_step < 64);
+        check("wakes when the input sounds again", woke && !tank.asleep);
+        const double level = 10 * std::log10(second / first);
+        if (std::fabs(level) > 1) std::printf("  the next phrase %.2f dB from the first\n", level);
+        check("the next phrase comes back at the same level", std::fabs(level) <= 1);
+    }
+
     if (failures) return 1;
     std::puts("earthshine ok");
     return 0;

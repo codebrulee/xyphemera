@@ -838,6 +838,8 @@ void initialize(State& state) {
     for (u32 k = 0; k < 4; ++k) state.space_damp[k] = 0;
     state.space_cleared = 0;
     state.space_last[0] = state.space_last[1] = 0;
+    state.quiet_blocks = state.asleep = 0;
+    state.rest[0] = state.rest[1] = 0;
 }
 
 // Space: a light reverb after the grains (not fed back by Repeats). Each side passes through
@@ -884,10 +886,35 @@ void space(State& s, i32* words, i32* scratch, i32* left, i32* right, opxy::Para
     s.space_at = (s.space_at - kHalfBlock) & kSpaceMask;
 }
 
+// Idle. The send bus plays at about 2^18 (Q31) when steady, so a swing of 2^6 is about 72 dB
+// under it. The effect rests once nothing more can sound (a held drone faded to nothing by
+// Hold, or, not holding, a recording quiet for its whole length, so no grain has anything to
+// play) and the input and the output have both been that still for a quarter second (Space's
+// tail gone too). Resting costs a block's swing check; it holds its last output (Space can
+// leave a steady offset, which is no sound) until the input moves again. A gap between grains
+// (Spring's and Slice's can be long) is not an end, and Hold forever never ends. Stillness is
+// judged by each side's swing within a block, not its level, so that offset does not keep it
+// awake.
+const u32 kQuiet = 1 << 6;
+const u32 kSleepAfter = 172;  // blocks: a quarter second
+
+// The larger side's swing in a block: its highest sample less its lowest.
+u32 block_swing(const opxy::Channel left, const opxy::Channel right) {
+    i32 lo[2] = {left[0], right[0]}, hi[2] = {left[0], right[0]};
+    for (u32 i = 1; i < opxy::block_frames; ++i) {
+        lo[0] = left[i] < lo[0] ? left[i] : lo[0];
+        hi[0] = left[i] > hi[0] ? left[i] : hi[0];
+        lo[1] = right[i] < lo[1] ? right[i] : lo[1];
+        hi[1] = right[i] > hi[1] ? right[i] : hi[1];
+    }
+    const u32 a = static_cast<u32>(hi[0]) - static_cast<u32>(lo[0]), b = static_cast<u32>(hi[1]) - static_cast<u32>(lo[1]);
+    return a > b ? a : b;
+}
+
 // The state and the grain pool can hold what an earlier build, or another effect in the slot,
 // left there: anything out of range starts again rather than reading outside the recording.
 bool sound(const State& s) {
-    return s.ready <= 1 && s.frozen <= 1 && s.draining <= 1 && s.write < kLength && s.filled <= kLength &&
+    return s.ready <= 1 && s.frozen <= 1 && s.draining <= 1 && s.asleep <= 1 && s.write < kLength && s.filled <= kLength &&
            s.recorded <= kLength && s.region_start < kLength && s.region_length <= kLength &&
            s.rewrite <= s.region_length && (s.head >> 8) < kLength && s.spring_anchor < kLength &&
            s.fade >= 0 && s.fade <= kFull && s.loudest >= 0 && s.loudest <= 65535 && s.dc > -(1 << 28) && s.dc < (1 << 28) &&
@@ -922,6 +949,18 @@ void process(State& state, opxy::Buffer buffer, const opxy::Transport& transport
         for (u32 n = 0; n < kGrains; ++n) grains[n].on = 0;
         for (u32 i = 0; i < frames; ++i) feedback[i] = 0;
         state.ready = 1;
+    }
+    const u32 heard_in = block_swing(left, right);
+    if (state.asleep) {
+        if (heard_in <= kQuiet) {
+            for (u32 i = 0; i < frames; ++i) {
+                left[i] = state.rest[0];
+                right[i] = state.rest[1];
+            }
+            return;
+        }
+        state.asleep = 0;
+        state.quiet_blocks = 0;
     }
 
     // Record. Repeats feeds the last block's output back in, darkened: while recording it
@@ -1118,5 +1157,15 @@ void process(State& state, opxy::Buffer buffer, const opxy::Transport& transport
             left[i] = multiply(left[i], gain);
             right[i] = multiply(right[i], gain);
         }
+    const bool ended = state.frozen ? holding != 0 && state.fade == 0 : state.clock - state.last_loud > kLength;
+    if (!ended || heard_in > kQuiet || block_swing(left, right) > kQuiet) {
+        state.quiet_blocks = 0;
+    } else if (++state.quiet_blocks >= kSleepAfter) {
+        // Resting: what still plays is silent, so the grains end here and start afresh on waking.
+        state.asleep = 1;
+        state.rest[0] = left[frames - 1];
+        state.rest[1] = right[frames - 1];
+        for (u32 n = 0; n < kGrains; ++n) grains[n].on = 0;
+    }
 }
 }  // namespace earthgrain

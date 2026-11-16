@@ -53,6 +53,10 @@ struct State {
     opxy::i32 space_damp[4];
     opxy::i32 space_last[2];  // its last output each side, to interpolate from
     opxy::u32 space_cleared;
+    // Idle: blocks in a row with the input and the output both still, whether it rests
+    // (everything is skipped until the input moves again), and the output it holds meanwhile.
+    opxy::u32 quiet_blocks, asleep;
+    opxy::i32 rest[2];
 };
 
 void initialize(State& state);

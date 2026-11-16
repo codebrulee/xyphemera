@@ -158,10 +158,37 @@ struct Tank {
     i32 direct;                  // the shimmer heard directly (not through the tank), this tick
     i32 release;                 // the octave's feedback: open while the input sounds
     Shifter shifter[2];          // up, sub
+    // Idle: blocks in a row with the input and the wet both still (swinging no
+    // more than kQuiet), and whether it rests (the tank is skipped until the
+    // input moves again).
+    u32 quiet_blocks, asleep;
 };
 
 static_assert(sizeof(Tank) <= kTankWords * 4, "the tank's state fits before the first line");
 static_assert(sizeof(State) <= opxy::effect_buffered_state_bytes - 4, "state fits a slot with a shift row");
+
+// Idle. The send bus plays at about 2^18 (Q31) when steady, so a swing of 2^6
+// is about 72 dB under it: the tail has faded out of hearing. The tank never
+// reaches zero: its rounding leaves a steady offset (a few hundred), which is
+// no sound, so stillness is judged by each side's swing within a block, not its
+// level. A quarter second still, in and out, and the effect rests, costing a
+// block's swing check, and holds its last output (that offset) until the input
+// moves again; the tank then picks up from where it was, without a step.
+const u32 kQuiet = 1 << 6;
+const u32 kSleepAfter = 172;  // blocks: a quarter second
+
+// The larger side's swing in a block: its highest sample less its lowest.
+inline u32 block_swing(const opxy::Channel left, const opxy::Channel right) {
+    i32 lo[2] = {left[0], right[0]}, hi[2] = {left[0], right[0]};
+    for (unsigned i = 1; i < opxy::block_frames; ++i) {
+        lo[0] = left[i] < lo[0] ? left[i] : lo[0];
+        hi[0] = left[i] > hi[0] ? left[i] : hi[0];
+        lo[1] = right[i] < lo[1] ? right[i] : lo[1];
+        hi[1] = right[i] > hi[1] ? right[i] : hi[1];
+    }
+    const u32 a = static_cast<u32>(hi[0]) - static_cast<u32>(lo[0]), b = static_cast<u32>(hi[1]) - static_cast<u32>(lo[1]);
+    return a > b ? a : b;
+}
 
 struct Line {
     i32* words;
@@ -766,6 +793,19 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
     // The tank's state, worked on where it lives (copying it in and out
     // each block costs more than it saves).
     Tank& k = stored;
+    const u32 heard_in = block_swing(left, right);
+    if (k.asleep) {
+        if (heard_in <= kQuiet) {
+            // The last output, held (held[][1] is each side's last sample).
+            for (unsigned i = 0; i < opxy::block_frames; ++i) {
+                left[i] = k.held[0][1];
+                right[i] = k.held[1][1];
+            }
+            return;
+        }
+        k.asleep = 0;
+        k.quiet_blocks = 0;
+    }
     Lines lines;
     for (u32 n = 0; n < kLines; ++n) lines.line[n] = Line{buffer.words + kLineOffset[n], kLineMask[n]};
     lines.scratch = reinterpret_cast<i16*>(buffer.words + kScratch);
@@ -822,5 +862,7 @@ void process(State& state, opxy::Buffer buffer, opxy::Channel left, opxy::Channe
         left[i + 1] = k.held[0][1];
         right[i + 1] = k.held[1][1];
     }
+    if (heard_in > kQuiet || block_swing(left, right) > kQuiet) k.quiet_blocks = 0;
+    else if (++k.quiet_blocks >= kSleepAfter) k.asleep = 1;
 }
 }

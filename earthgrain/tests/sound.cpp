@@ -223,5 +223,53 @@ int main() {
         if (n) std::printf("%s: %d clicks\n", c.name, n);
         check("no clicks", n == 0);
     }
+
+    // Idle: once nothing more can sound (a drone Hold has faded, or with Hold off a recording
+    // quiet for its whole length) and the output is still, the effect rests until the input
+    // moves again. Hold forever never rests, even in Spring's and Slice's long gaps. Resting and
+    // waking make no step.
+    for (unsigned mode = 0; mode < 4; ++mode)
+    for (unsigned hold : {0u, 4u, 8u}) {
+        Settings s;
+        s.mode = mode;
+        s.hold = hold;
+        s.space = 0.6;
+        opxy::i32 p[12];
+        words_for(s, p);
+        for (opxy::u32 i = 0; i < earthgrain::kBufferWords; ++i) words[i] = 0;
+        earthgrain::State state;
+        earthgrain::initialize(state);
+        const unsigned phrase = 3 * 44100, again = phrase + 40 * 44100;
+        opxy::i32 l[opxy::block_frames], r[opxy::block_frames], last = 0;
+        double resting = -1, biggest_step = 0;
+        bool woke = false;
+        for (unsigned b = 0; b < (again + 44100) / opxy::block_frames; ++b) {
+            const unsigned n = b * opxy::block_frames;
+            for (unsigned i = 0; i < opxy::block_frames; ++i) {
+                const unsigned k = n + i;
+                const bool on = k < phrase || k >= again;
+                // At the send bus's level: peaks about 2^18.
+                l[i] = r[i] = on ? static_cast<opxy::i32>(131072 * (std::sin(2 * M_PI * 220 * k / kFs) +
+                                                                     std::sin(2 * M_PI * 329.6 * k / kFs)))
+                                 : 0;
+            }
+            earthgrain::process(state, opxy::Buffer{words, earthgrain::kBufferWords},
+                                opxy::Transport{1200, b * 64u * 96u / 22050u, true}, l, r, p);
+            if (state.asleep && resting < 0) resting = (static_cast<double>(n) - phrase) / kFs;
+            if (resting >= 0 && !state.asleep) woke = true;
+            for (unsigned i = 0; i < opxy::block_frames; ++i) {
+                // Up to the block the next phrase starts in (its start is no step of resting).
+                if (resting >= 0 && n + opxy::block_frames <= again) biggest_step = std::fmax(biggest_step, std::fabs(static_cast<double>(l[i]) - last));
+                last = l[i];
+            }
+        }
+        // Hold 8 s rests once the drone has faded; Hold off once the recording (5.7 s) is quiet.
+        const double expected = hold == 4 ? 9.2 : 6.0;
+        const bool rests_right = hold == 0 ? resting < 0 : resting >= expected - 0.5 && resting <= expected + 1;
+        if (!rests_right) std::printf("  mode %u hold %u: rests at %.1f s\n", mode, hold, resting);
+        check("rests once nothing more can sound, and never with Hold forever", rests_right);
+        check("going to rest makes no step", biggest_step < 64);
+        check("wakes when the input moves again", hold == 0 || (woke && !state.asleep));
+    }
     return failures ? 1 : 0;
 }
