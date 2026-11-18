@@ -12,9 +12,10 @@
 //          ▲                                  │
 //          └──── Repeats ◄── tone ◄───────────┘
 //
-// Modes so far: Cloud (grains at random places in the last moments of the recording, or
-// anywhere in a held phrase) and Stretch (grains laid evenly along a play point that moves
-// slower than time, so the sound slows without changing pitch). Space (a light diffuser) is still to come.
+// Modes: Cloud (grains at random places in the last moments of the recording, or anywhere
+// in a held phrase), Stretch (grains laid evenly along a play point that moves slower than
+// time, so the sound slows without changing pitch), Spring (grains whose spacing breathes)
+// and Slice (the phrase cut at its onsets). Space, a light reverb, follows the grains.
 // A send effect: it returns only the wet.
 namespace earthgrain {
 namespace {

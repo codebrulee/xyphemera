@@ -6,6 +6,7 @@ in its own folder, with its own definition, tests, README and catalog entry.
 | Machine | Screen | Kind | What it is |
 | --- | --- | --- | --- |
 | [earthshine](earthshine/README.md) | [<img src="earthshine/screens/page1.png" width="240" alt="Earthshine's screen">](earthshine/README.md) | send effect | A take on a bipolar shimmer verb, with a UI that takes the perspective of exploring the musical and emotional impact of light touching the earth |
+| [earthgrain](earthgrain/README.md) | [<img src="earthgrain/screens/page1.png" width="240" alt="Earthgrain's screen">](earthgrain/README.md) | send effect | A granular looper that holds your last phrase as a drone, in four modes (Weather, Satellite, Orbit, Plates), each with its own view of the Earth |
 
 ## Build it yourself
 
@@ -36,7 +37,7 @@ covers each step in detail.
    checkouts, as in the guide's
    [step 2](https://github.com/etcetc000/open-xy/blob/main/docs/build.md#2-copy-the-os-from-your-op-xy).
 3. Build, with one `--machine` for each machine you want: here Earthshine and
-   the core Macro Osc synth:
+   the core Macro Osc synth (add `--machine ../xyphemera/earthgrain` for Earthgrain):
 
    ```sh
    python sdk.py build --machine ../xyphemera/earthshine \
